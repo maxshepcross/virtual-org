@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""Bootstrap the virtual_org Postgres schema."""
+
+import os
+import sys
+
+import psycopg2
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SCHEMA_SQL = """
+-- Ideas: raw captures from Slack
+CREATE TABLE IF NOT EXISTS ideas (
+    id              BIGSERIAL PRIMARY KEY,
+    slack_ts        TEXT UNIQUE,
+    slack_thread_ts TEXT,
+    slack_channel   TEXT,
+    slack_user      TEXT,
+
+    -- Raw input
+    raw_text        TEXT NOT NULL,
+    raw_image_url   TEXT,
+    voice_transcript TEXT,
+
+    -- Triage results (filled by triage agent)
+    status          TEXT NOT NULL DEFAULT 'raw',
+    category        TEXT,
+    title           TEXT,
+    structured_body TEXT,
+    effort          TEXT,
+    impact          TEXT,
+    target_repo     TEXT,
+    triage_json     JSONB,
+
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    triaged_at      TIMESTAMPTZ,
+    archived_at     TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_ideas_status ON ideas(status);
+CREATE INDEX IF NOT EXISTS idx_ideas_category ON ideas(category);
+CREATE INDEX IF NOT EXISTS idx_ideas_created ON ideas(created_at DESC);
+
+-- Tasks: work items created from triaged ideas
+CREATE TABLE IF NOT EXISTS tasks (
+    id              BIGSERIAL PRIMARY KEY,
+    idea_id         BIGINT REFERENCES ideas(id),
+
+    -- Task definition
+    title           TEXT NOT NULL,
+    description     TEXT NOT NULL,
+    category        TEXT NOT NULL,
+    target_repo     TEXT,
+
+    -- Queue state
+    status          TEXT NOT NULL DEFAULT 'queued',
+    worker_id       TEXT,
+    lease_token     UUID,
+    lease_expires_at TIMESTAMPTZ,
+    last_heartbeat_at TIMESTAMPTZ,
+
+    -- Agent outputs
+    research_json   JSONB,
+    implementation_json JSONB,
+    pr_url          TEXT,
+    pr_number       INTEGER,
+    pr_status       TEXT,
+    branch_name     TEXT,
+    error_message   TEXT,
+
+    -- Audit
+    events          JSONB NOT NULL DEFAULT '[]'::JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at      TIMESTAMPTZ,
+    finished_at     TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_idea ON tasks(idea_id);
+
+-- Unique: only one active task per idea
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idea
+    ON tasks(idea_id)
+    WHERE status IN ('queued', 'claimed', 'researching', 'implementing');
+"""
+
+
+def main():
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        print("ERROR: DATABASE_URL not set in .env")
+        sys.exit(1)
+
+    conn = psycopg2.connect(database_url)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute(SCHEMA_SQL)
+        print("Schema created successfully.")
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    main()
