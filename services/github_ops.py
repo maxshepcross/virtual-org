@@ -17,22 +17,38 @@ def slugify(text: str, max_len: int = 40) -> str:
     return slug[:max_len].rstrip("-")
 
 
+def _run_git(repo_dir: Path, args: list[str], timeout: int) -> subprocess.CompletedProcess:
+    """Run a git command and raise if it fails."""
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "git command failed")
+    return result
+
+
 def create_branch(repo_dir: Path, task_id: int, title: str) -> str:
-    """Create and push a new branch for this task."""
+    """Create a clean branch for this task from the latest main."""
     branch = f"virtual-org/idea-{task_id}-{slugify(title)}"
 
-    subprocess.run(
-        ["git", "checkout", "main"],
-        cwd=repo_dir, capture_output=True, timeout=30,
-    )
-    subprocess.run(
-        ["git", "pull", "origin", "main"],
-        cwd=repo_dir, capture_output=True, timeout=60,
-    )
-    subprocess.run(
-        ["git", "checkout", "-b", branch],
-        cwd=repo_dir, capture_output=True, timeout=10,
-    )
+    _run_git(repo_dir, ["checkout", "main"], timeout=30)
+    _run_git(repo_dir, ["fetch", "origin", "main"], timeout=60)
+    _run_git(repo_dir, ["reset", "--hard", "origin/main"], timeout=30)
+    _run_git(repo_dir, ["clean", "-fd"], timeout=30)
+
+    existing_branches = _run_git(
+        repo_dir,
+        ["branch", "--list", branch],
+        timeout=10,
+    ).stdout.strip()
+    if existing_branches:
+        _run_git(repo_dir, ["branch", "-D", branch], timeout=10)
+
+    _run_git(repo_dir, ["checkout", "-b", branch], timeout=10)
 
     return branch
 

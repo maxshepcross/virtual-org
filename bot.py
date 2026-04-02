@@ -11,16 +11,16 @@ import os
 import threading
 import time
 
-from dotenv import load_dotenv
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
+from config.env import load_project_env
 from config.constants import TRIAGE_INTERVAL_SECONDS
 from models.idea import create_idea
 from services.slack_notify import notify_idea_captured
 from triage import run_triage
 
-load_dotenv()
+load_project_env()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 

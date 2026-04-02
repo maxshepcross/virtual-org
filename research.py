@@ -7,20 +7,34 @@ import logging
 import os
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import anthropic
-from dotenv import load_dotenv
 
 from config.constants import RESEARCH_MODEL, MAX_RESEARCH_TOKENS, ALLOWED_REPOS
+from config.env import load_project_env
 from models.task import Task
 
-load_dotenv()
+load_project_env()
 logger = logging.getLogger(__name__)
 
 RESEARCH_PROMPT = (Path(__file__).parent / "prompts" / "research.md").read_text()
 
 # Where repos are cloned locally for research
 REPOS_DIR = Path(__file__).parent / ".repos"
+
+
+def _coerce_prompt_value(value: Any) -> str:
+    """Normalize prompt values so string replacement never crashes."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "\n".join(f"- {item}" for item in value if item is not None)
+    if isinstance(value, dict):
+        return json.dumps(value, indent=2, sort_keys=True)
+    return str(value)
 
 
 def _ensure_repo(repo: str) -> Path:
@@ -73,7 +87,7 @@ def run_research(task: Task) -> dict:
     client = anthropic.Anthropic()
 
     # Build context
-    triage_sketch = ""
+    triage_sketch: Any = ""
     if task.idea_id:
         from models.idea import _conn
         import psycopg2.extras
@@ -100,11 +114,14 @@ def run_research(task: Task) -> dict:
             logger.warning("Could not search codebase: %s", e)
             codebase_context = f"Codebase search unavailable: {e}"
 
-    prompt = RESEARCH_PROMPT.replace("{title}", task.title)
-    prompt = prompt.replace("{category}", task.category)
-    prompt = prompt.replace("{description}", task.description)
-    prompt = prompt.replace("{target_repo}", task.target_repo or "N/A")
-    prompt = prompt.replace("{approach_sketch}", triage_sketch or "None provided")
+    prompt = RESEARCH_PROMPT.replace("{title}", _coerce_prompt_value(task.title))
+    prompt = prompt.replace("{category}", _coerce_prompt_value(task.category))
+    prompt = prompt.replace("{description}", _coerce_prompt_value(task.description))
+    prompt = prompt.replace("{target_repo}", _coerce_prompt_value(task.target_repo or "N/A"))
+    prompt = prompt.replace(
+        "{approach_sketch}",
+        _coerce_prompt_value(triage_sketch) or "None provided",
+    )
 
     if codebase_context:
         prompt += f"\n\n## Codebase search results\n\n{codebase_context}"
