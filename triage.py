@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import os
 from pathlib import Path
+import re
 
 import anthropic
-from dotenv import load_dotenv
 
 from config.constants import ACTIONABLE_CATEGORIES, TRIAGE_MODEL, MAX_TRIAGE_TOKENS
+from config.env import load_project_env
 from models.idea import (
     get_raw_ideas,
     get_recent_ideas,
@@ -18,10 +20,10 @@ from models.idea import (
     update_idea_triage,
     Idea,
 )
-from models.task import create_task
+from models.task import create_task, get_latest_task_for_title, get_recent_tasks
 from services.slack_notify import notify_idea_triaged
 
-load_dotenv()
+load_project_env()
 logger = logging.getLogger(__name__)
 
 TRIAGE_PROMPT = (Path(__file__).parent / "prompts" / "triage.md").read_text()
@@ -68,6 +70,67 @@ def triage_idea(idea: Idea, recent: list[Idea]) -> dict:
     return json.loads(text.strip())
 
 
+def _should_create_task(result: dict) -> bool:
+    """Allow retries when the previous matching task already failed."""
+    if result["category"] not in ACTIONABLE_CATEGORIES:
+        return False
+
+    duplicate_title = result.get("duplicate_of")
+    if not duplicate_title:
+        return True
+
+    previous_task = _find_duplicate_task(result)
+    if previous_task and previous_task.status == "failed":
+        result["duplicate_of"] = None
+        return True
+
+    return False
+
+
+def _normalize_title(title: str) -> str:
+    """Normalize titles so small wording changes still compare well."""
+    return re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
+
+
+def _find_duplicate_task(result: dict):
+    """Find the prior task referenced by duplicate_of, even if wording drifted."""
+    duplicate_title = result.get("duplicate_of")
+    if not duplicate_title:
+        return None
+
+    for candidate in (duplicate_title, result.get("title")):
+        if not candidate:
+            continue
+        task = get_latest_task_for_title(candidate)
+        if task:
+            return task
+
+    normalized_duplicate = _normalize_title(duplicate_title)
+    normalized_title = _normalize_title(result.get("title", ""))
+    best_task = None
+    best_score = 0.0
+
+    for task in get_recent_tasks():
+        if task.category != result["category"]:
+            continue
+        if result.get("target_repo") and task.target_repo != result.get("target_repo"):
+            continue
+
+        normalized_task_title = _normalize_title(task.title)
+        score = max(
+            difflib.SequenceMatcher(None, normalized_duplicate, normalized_task_title).ratio(),
+            difflib.SequenceMatcher(None, normalized_title, normalized_task_title).ratio(),
+        )
+        if score > best_score:
+            best_score = score
+            best_task = task
+
+    if best_score >= 0.72:
+        return best_task
+
+    return None
+
+
 def run_triage() -> int:
     """Triage all raw ideas. Returns count of ideas triaged."""
     raw_ideas = get_raw_ideas()
@@ -94,7 +157,7 @@ def run_triage() -> int:
             )
 
             # Create task if actionable
-            will_action = result["category"] in ACTIONABLE_CATEGORIES and not result.get("duplicate_of")
+            will_action = _should_create_task(result)
 
             if will_action:
                 create_task(

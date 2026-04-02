@@ -8,16 +8,25 @@ import os
 import subprocess
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-from config.constants import ALLOWED_REPOS
+from config.constants import ALLOWED_REPOS, IMPLEMENT_MODEL, IMPLEMENT_TIMEOUT_SECONDS
+from config.env import load_project_env
 from models.task import Task
 from services.github_ops import create_branch, commit_and_push, open_pr
 
-load_dotenv()
+load_project_env()
 logger = logging.getLogger(__name__)
 
 REPOS_DIR = Path(__file__).parent / ".repos"
+
+
+def _format_timeout(seconds: int) -> str:
+    """Return a human-readable timeout string for Slack and task logs."""
+    if seconds % 60 == 0:
+        minutes = seconds // 60
+        unit = "minute" if minutes == 1 else "minutes"
+        return f"{minutes} {unit}"
+    unit = "second" if seconds == 1 else "seconds"
+    return f"{seconds} {unit}"
 
 
 def _build_claude_prompt(task: Task, research: dict) -> str:
@@ -89,8 +98,8 @@ def run_implementation(task: Task, research: dict) -> dict:
             cwd=repo_dir,
             capture_output=True,
             text=True,
-            timeout=300,  # 5 minute timeout
-            env={**os.environ, "CLAUDE_MODEL": "claude-sonnet-4-6"},
+            timeout=IMPLEMENT_TIMEOUT_SECONDS,
+            env={**os.environ, "CLAUDE_MODEL": IMPLEMENT_MODEL},
         )
 
         if result.returncode != 0:
@@ -102,7 +111,10 @@ def run_implementation(task: Task, research: dict) -> dict:
 
         claude_output = result.stdout[-2000:]  # Last 2000 chars of output
     except subprocess.TimeoutExpired:
-        return {"branch_name": branch, "error": "Claude Code timed out (5 min)"}
+        return {
+            "branch_name": branch,
+            "error": f"Claude Code timed out after {_format_timeout(IMPLEMENT_TIMEOUT_SECONDS)}",
+        }
 
     # Commit and push
     commit_msg = f"virtual-org: {task.title}\n\nIdea #{task.idea_id} → Task #{task.id}\nImplemented by Virtual Org agent."

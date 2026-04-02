@@ -14,6 +14,31 @@ cp .env.example .env  # Fill in your keys
 .venv/bin/python3 worker.py             # Task worker (separate terminal)
 ```
 
+## Keep It Running On Your Mac
+
+If you want Virtual Org to start automatically when you log in and restart if it crashes, use the built-in macOS service manager:
+
+```bash
+chmod +x scripts/install_launchd_services.sh scripts/uninstall_launchd_services.sh scripts/status_launchd_services.sh
+./scripts/install_launchd_services.sh
+```
+
+This keeps the bot and worker running in the background on your Mac. Logs go to `.context/launchd-logs/`.
+
+Check status:
+
+```bash
+./scripts/status_launchd_services.sh
+```
+
+Remove the background services:
+
+```bash
+./scripts/uninstall_launchd_services.sh
+```
+
+Important: this is "always on" only while your Mac is awake and logged in. If you want true 24/7 uptime, move the bot and worker to a cloud host.
+
 ## How It Works
 
 1. **You DM the Slack bot** with a raw idea (text, voice memo, photo)

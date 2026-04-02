@@ -11,10 +11,10 @@ import os
 import threading
 import time
 
-from dotenv import load_dotenv
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
+from config.env import load_project_env
 from config.constants import TRIAGE_INTERVAL_SECONDS, CONTENT_CHECK_INTERVAL_SECONDS
 from content_pipeline import check_and_start_interview, handle_interview_answer
 from models.content import get_active_interview, get_draft_by_slack_ts, approve_draft, reject_draft
@@ -22,7 +22,7 @@ from models.idea import create_idea
 from services.slack_notify import notify_idea_captured, reply_in_thread
 from triage import run_triage
 
-load_dotenv()
+load_project_env()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 

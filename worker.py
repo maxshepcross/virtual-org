@@ -11,9 +11,8 @@ import os
 import platform
 import time
 
-from dotenv import load_dotenv
-
 from config.constants import POLL_INTERVAL_SECONDS, ACTIONABLE_CATEGORIES
+from config.env import load_project_env
 from models.idea import Idea
 from models.task import (
     Task,
@@ -31,7 +30,7 @@ from services.slack_notify import (
     notify_task_failed,
 )
 
-load_dotenv()
+load_project_env()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -57,6 +56,50 @@ def _get_idea_slack_info(task: Task) -> tuple[str | None, str | None]:
             return None, None
     finally:
         conn.close()
+
+
+def _finalize_implementation_result(
+    task: Task,
+    impl_result: dict,
+    channel: str | None,
+    thread_ts: str | None,
+) -> Task:
+    """Store implementation results and notify Slack on failure or PR creation."""
+    pr_url = impl_result.get("pr_url")
+    pr_number = impl_result.get("pr_number")
+    branch_name = impl_result.get("branch_name")
+    error = impl_result.get("error")
+
+    if error:
+        task = update_task_status(
+            task.id, task.lease_token, "failed",
+            event_message=f"Implementation failed: {error}",
+            implementation_json=impl_result,
+            branch_name=branch_name,
+            error_message=error,
+        )
+        if channel and thread_ts:
+            notify_task_failed(channel, thread_ts, task.title, error)
+        return task
+
+    final_status = "pr_open" if pr_url else "done"
+    task = update_task_status(
+        task.id, task.lease_token, final_status,
+        event_message=f"PR opened: {pr_url}" if pr_url else "Implementation complete (no PR)",
+        implementation_json=impl_result,
+        pr_url=pr_url,
+        pr_number=pr_number,
+        pr_status="open" if pr_url else None,
+        branch_name=branch_name,
+    )
+
+    if pr_url and channel and thread_ts:
+        notify_pr_opened(
+            channel, thread_ts, task.title,
+            pr_url, task.target_repo, pr_number,
+        )
+
+    return task
 
 
 def execute_task(task: Task) -> None:
@@ -122,26 +165,7 @@ def execute_task(task: Task) -> None:
             notify_task_failed(channel, thread_ts, task.title, str(e))
         return
 
-    pr_url = impl_result.get("pr_url")
-    pr_number = impl_result.get("pr_number")
-    branch_name = impl_result.get("branch_name")
-
-    final_status = "pr_open" if pr_url else "done"
-    task = update_task_status(
-        task.id, task.lease_token, final_status,
-        event_message=f"PR opened: {pr_url}" if pr_url else "Implementation complete (no PR)",
-        implementation_json=impl_result,
-        pr_url=pr_url,
-        pr_number=pr_number,
-        pr_status="open" if pr_url else None,
-        branch_name=branch_name,
-    )
-
-    if pr_url and channel and thread_ts:
-        notify_pr_opened(
-            channel, thread_ts, task.title,
-            pr_url, task.target_repo, pr_number,
-        )
+    _finalize_implementation_result(task, impl_result, channel, thread_ts)
 
 
 def run_once() -> bool:

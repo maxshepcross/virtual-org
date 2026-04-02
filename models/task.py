@@ -254,3 +254,43 @@ def get_active_tasks() -> list[Task]:
             return [_row_to_task(row) for row in cur.fetchall()]
     finally:
         conn.close()
+
+
+def get_latest_task_for_title(title: str) -> Task | None:
+    """Fetch the most recent task for a given title, if one exists."""
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM tasks
+                WHERE title = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (title,),
+            )
+            row = cur.fetchone()
+            return _row_to_task(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_recent_tasks(limit: int = 25) -> list[Task]:
+    """Fetch recent tasks for duplicate and retry checks."""
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM tasks
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [_row_to_task(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
