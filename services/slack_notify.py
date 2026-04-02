@@ -92,3 +92,68 @@ def notify_task_failed(channel: str, thread_ts: str, title: str, error: str) -> 
         thread_ts,
         f"*Failed:* *{title}*\n{error}\nNeeds your input.",
     )
+
+
+# ---------------------------------------------------------------------------
+# Content pipeline notifications
+# ---------------------------------------------------------------------------
+
+def send_interview_start(channel: str, thread_ts: str) -> None:
+    """Send the opening message for a weekly content interview."""
+    reply_in_thread(
+        channel,
+        thread_ts,
+        "Hey! Time for your weekly content session.\n"
+        "I'll ask you 5 quick questions to pull out stories and ideas for posts this week.\n"
+        "Just reply in this thread — takes about 5 minutes.",
+    )
+
+
+def send_interview_question(
+    channel: str, thread_ts: str, question_number: int, total: int, question_text: str
+) -> None:
+    """Send a numbered interview question."""
+    reply_in_thread(
+        channel,
+        thread_ts,
+        f"*Question {question_number}/{total}*\n{question_text}",
+    )
+
+
+def send_interview_complete(channel: str, thread_ts: str) -> None:
+    """Confirm the interview is done and drafts are coming."""
+    reply_in_thread(
+        channel,
+        thread_ts,
+        "Great answers! I'll research what's trending and draft some posts. "
+        "Give me a few minutes.",
+    )
+
+
+def send_content_draft(channel: str, platform: str, draft_text: str, hook: str | None = None) -> str | None:
+    """Send a content draft for review. Returns the message ts for reaction tracking."""
+    platform_label = "X (Twitter)" if platform == "x" else "LinkedIn"
+    text = (
+        f"*Draft for {platform_label}*\n\n"
+        f"{draft_text}\n\n"
+        "---\n"
+        "React with :white_check_mark: to approve or :x: to skip."
+    )
+    try:
+        resp = _get_client().chat_postMessage(channel=channel, text=text)
+        return resp["ts"]
+    except Exception:
+        logger.exception("Failed to send content draft")
+        return None
+
+
+def send_drafts_complete(channel: str, count: int) -> None:
+    """Notify that all drafts have been sent."""
+    try:
+        _get_client().chat_postMessage(
+            channel=channel,
+            text=f"I've sent you {count} draft posts above. "
+            "React with :white_check_mark: on the ones you want to post!",
+        )
+    except Exception:
+        logger.exception("Failed to send drafts-complete notification")

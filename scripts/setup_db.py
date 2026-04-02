@@ -89,6 +89,43 @@ CREATE INDEX IF NOT EXISTS idx_tasks_idea ON tasks(idea_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idea
     ON tasks(idea_id)
     WHERE status IN ('queued', 'claimed', 'researching', 'implementing');
+
+-- Content interviews: weekly conversations to extract stories and opinions
+CREATE TABLE IF NOT EXISTS content_interviews (
+    id              BIGSERIAL PRIMARY KEY,
+    slack_user      TEXT NOT NULL,
+    slack_channel   TEXT NOT NULL,
+    slack_thread_ts TEXT,
+    status          TEXT NOT NULL DEFAULT 'active',
+    questions       JSONB NOT NULL DEFAULT '[]'::JSONB,
+    question_index  INTEGER NOT NULL DEFAULT 0,
+    trends_json     JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at    TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_interviews_user_status
+    ON content_interviews(slack_user, status);
+
+-- Content drafts: generated posts for X and LinkedIn
+CREATE TABLE IF NOT EXISTS content_drafts (
+    id              BIGSERIAL PRIMARY KEY,
+    interview_id    BIGINT REFERENCES content_interviews(id),
+    platform        TEXT NOT NULL,
+    draft_text      TEXT NOT NULL,
+    hook            TEXT,
+    topic           TEXT,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    slack_channel   TEXT,
+    slack_ts        TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    approved_at     TIMESTAMPTZ,
+    posted_at       TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_drafts_interview ON content_drafts(interview_id);
+CREATE INDEX IF NOT EXISTS idx_drafts_status ON content_drafts(status);
+CREATE INDEX IF NOT EXISTS idx_drafts_slack_ts ON content_drafts(slack_ts);
 """
 
 

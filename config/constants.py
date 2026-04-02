@@ -38,6 +38,17 @@ ACTIONABLE_CATEGORIES = ["tempa-feature", "tempa-bug", "research"]
 TASK_STATUSES_ACTIVE = ["queued", "claimed", "researching", "implementing"]
 TASK_STATUSES_FINAL = ["pr_open", "done", "failed"]
 
+# --- Content Pipeline ---
+CONTENT_MODEL = CLAUDE_MODEL             # Sonnet for quality drafts
+CONTENT_OWNER_SLACK_USER = os.getenv("CONTENT_OWNER_SLACK_USER", "")
+CONTENT_INTERVIEW_DAY = os.getenv("CONTENT_INTERVIEW_DAY", "monday").lower()
+CONTENT_INTERVIEW_HOUR = int(os.getenv("CONTENT_INTERVIEW_HOUR", "10"))
+CONTENT_CHECK_INTERVAL_SECONDS = 60
+INTERVIEW_QUESTION_COUNT = 5
+INTERVIEW_STALE_HOURS = 48  # Auto-cancel after this many hours
+MAX_CONTENT_TOKENS = 4000
+CONTENT_TOPICS = ["entrepreneurship", "AI", "building in public", "solo founding"]
+
 # --- Allowed repos ---
 ALLOWED_REPOS = [
     r.strip()
