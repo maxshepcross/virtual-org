@@ -33,7 +33,7 @@ def _run_git(repo_dir: Path, args: list[str], timeout: int) -> subprocess.Comple
 
 def create_branch(repo_dir: Path, task_id: int, title: str) -> str:
     """Create a clean branch for this task from the latest main."""
-    branch = f"virtual-org/idea-{task_id}-{slugify(title)}"
+    branch = f"paperclip/idea-{task_id}-{slugify(title)}"
 
     _run_git(repo_dir, ["checkout", "main"], timeout=30)
     _run_git(repo_dir, ["fetch", "origin", "main"], timeout=60)

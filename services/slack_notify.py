@@ -1,4 +1,4 @@
-"""Slack notification helpers for Virtual Org."""
+"""Slack notification helpers for the workspace automation app."""
 
 from __future__ import annotations
 

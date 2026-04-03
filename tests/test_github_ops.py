@@ -15,14 +15,14 @@ class CreateBranchTests(unittest.TestCase):
             None,  # fetch origin main
             None,  # reset hard origin/main
             None,  # clean -fd
-            type("Result", (), {"stdout": "  virtual-org/idea-2-fix-save\n"})(),
+            type("Result", (), {"stdout": "  paperclip/idea-2-fix-save\n"})(),
             None,  # delete existing branch
             None,  # checkout -b new branch
         ]
 
         branch = create_branch(Path("/tmp/repo"), 2, "Fix save")
 
-        self.assertEqual(branch, "virtual-org/idea-2-fix-save")
+        self.assertEqual(branch, "paperclip/idea-2-fix-save")
         self.assertEqual(
             [call.args[1] for call in run_git.call_args_list],
             [
@@ -30,9 +30,9 @@ class CreateBranchTests(unittest.TestCase):
                 ["fetch", "origin", "main"],
                 ["reset", "--hard", "origin/main"],
                 ["clean", "-fd"],
-                ["branch", "--list", "virtual-org/idea-2-fix-save"],
-                ["branch", "-D", "virtual-org/idea-2-fix-save"],
-                ["checkout", "-b", "virtual-org/idea-2-fix-save"],
+                ["branch", "--list", "paperclip/idea-2-fix-save"],
+                ["branch", "-D", "paperclip/idea-2-fix-save"],
+                ["checkout", "-b", "paperclip/idea-2-fix-save"],
             ],
         )
 

@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Worker loop — claims tasks from the queue and runs them through research → implementation.
-
-Mirrors Tempa's job_runner pattern: poll → claim → execute → heartbeat → finalize.
-"""
+"""Worker loop — claims tasks from the queue and runs them through research → implementation."""
 
 from __future__ import annotations
 
@@ -11,7 +8,7 @@ import os
 import platform
 import time
 
-from config.constants import POLL_INTERVAL_SECONDS, ACTIONABLE_CATEGORIES
+from config.constants import POLL_INTERVAL_SECONDS, CODE_TASK_CATEGORIES
 from config.env import load_project_env
 from models.idea import Idea
 from models.task import (
@@ -138,7 +135,7 @@ def execute_task(task: Task) -> None:
         notify_research_done(channel, thread_ts, task.title, summary)
 
     # --- Phase 2: Implementation (only for code tasks) ---
-    if task.category not in ("tempa-feature", "tempa-bug") or not task.target_repo:
+    if task.category not in CODE_TASK_CATEGORIES or not task.target_repo:
         update_task_status(
             task.id, task.lease_token, "done",
             event_message="Research-only task complete (no code target)",
