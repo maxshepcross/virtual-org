@@ -1,4 +1,4 @@
-"""Central configuration for Virtual Org."""
+"""Central configuration for the workspace automation harness."""
 
 import os
 
@@ -24,15 +24,16 @@ MAX_IMPLEMENT_TOKENS = 8000
 
 # --- Categories ---
 IDEA_CATEGORIES = [
-    "tempa-feature",
-    "tempa-bug",
+    "paperclip-feature",
+    "paperclip-bug",
     "business",
     "content",
     "research",
     "random",
 ]
-
-ACTIONABLE_CATEGORIES = ["tempa-feature", "tempa-bug", "research"]
+LEGACY_CODE_CATEGORIES = ["tempa-feature", "tempa-bug"]
+CODE_TASK_CATEGORIES = ["paperclip-feature", "paperclip-bug", *LEGACY_CODE_CATEGORIES]
+ACTIONABLE_CATEGORIES = [*CODE_TASK_CATEGORIES, "research"]
 
 # --- Task statuses ---
 TASK_STATUSES_ACTIVE = ["queued", "claimed", "researching", "implementing"]
@@ -52,6 +53,6 @@ CONTENT_TOPICS = ["entrepreneurship", "AI", "building in public", "solo founding
 # --- Allowed repos ---
 ALLOWED_REPOS = [
     r.strip()
-    for r in os.getenv("ALLOWED_REPOS", "maxshepcross/tempa").split(",")
+    for r in os.getenv("ALLOWED_REPOS", "").split(",")
     if r.strip()
 ]

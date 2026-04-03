@@ -11,15 +11,15 @@ class TriageTaskCreationTests(unittest.TestCase):
     @patch("triage.get_latest_task_for_title")
     def test_failed_duplicate_is_retriable(self, get_latest_task_for_title) -> None:
         result = {
-            "category": "tempa-feature",
-            "duplicate_of": "Change dashboard page title to 'Tempa Dashboard'",
+            "category": "paperclip-feature",
+            "duplicate_of": "Change dashboard page title to 'Paperclip Dashboard'",
         }
         get_latest_task_for_title.return_value = Task(
             id=3,
             idea_id=4,
-            title="Change dashboard page title to 'Tempa Dashboard'",
+            title="Change dashboard page title to 'Paperclip Dashboard'",
             description="Change the title",
-            category="tempa-feature",
+            category="paperclip-feature",
             status="failed",
         )
 
@@ -29,22 +29,22 @@ class TriageTaskCreationTests(unittest.TestCase):
     @patch("triage.get_latest_task_for_title")
     def test_active_duplicate_stays_blocked(self, get_latest_task_for_title) -> None:
         result = {
-            "category": "tempa-feature",
-            "duplicate_of": "Change dashboard page title to 'Tempa Dashboard'",
+            "category": "paperclip-feature",
+            "duplicate_of": "Change dashboard page title to 'Paperclip Dashboard'",
         }
         get_latest_task_for_title.return_value = Task(
             id=4,
             idea_id=5,
-            title="Change dashboard page title to 'Tempa Dashboard'",
+            title="Change dashboard page title to 'Paperclip Dashboard'",
             description="Change the title",
-            category="tempa-feature",
+            category="paperclip-feature",
             status="queued",
         )
 
         self.assertFalse(_should_create_task(result))
         self.assertEqual(
             result["duplicate_of"],
-            "Change dashboard page title to 'Tempa Dashboard'",
+            "Change dashboard page title to 'Paperclip Dashboard'",
         )
 
     @patch("triage.get_recent_tasks")
@@ -55,20 +55,20 @@ class TriageTaskCreationTests(unittest.TestCase):
         get_recent_tasks,
     ) -> None:
         result = {
-            "category": "tempa-feature",
-            "target_repo": "maxshepcross/tempa",
-            "title": "Change dashboard browser tab title to 'Tempa Dashboard'",
-            "duplicate_of": "Change dashboard page title to 'Tempa Dashboard'",
+            "category": "paperclip-feature",
+            "target_repo": "maxshepcross/paperclip",
+            "title": "Change dashboard browser tab title to 'Paperclip Dashboard'",
+            "duplicate_of": "Change dashboard page title to 'Paperclip Dashboard'",
         }
         get_latest_task_for_title.return_value = None
         get_recent_tasks.return_value = [
             Task(
                 id=3,
                 idea_id=4,
-                title="Change dashboard page title to 'Tempa Dashboard'",
+                title="Change dashboard page title to 'Paperclip Dashboard'",
                 description="Change the title",
-                category="tempa-feature",
-                target_repo="maxshepcross/tempa",
+                category="paperclip-feature",
+                target_repo="maxshepcross/paperclip",
                 status="failed",
             )
         ]
@@ -86,20 +86,20 @@ class TriageTaskCreationTests(unittest.TestCase):
         get_recent_tasks,
     ) -> None:
         result = {
-            "category": "tempa-feature",
-            "target_repo": "maxshepcross/tempa",
-            "title": "Change dashboard browser tab title to 'Tempa Dashboard'",
-            "duplicate_of": "Change dashboard page title to 'Tempa Dashboard'",
+            "category": "paperclip-feature",
+            "target_repo": "maxshepcross/paperclip",
+            "title": "Change dashboard browser tab title to 'Paperclip Dashboard'",
+            "duplicate_of": "Change dashboard page title to 'Paperclip Dashboard'",
         }
         get_latest_task_for_title.return_value = None
         get_recent_tasks.return_value = [
             Task(
                 id=4,
                 idea_id=5,
-                title="Change dashboard page title to 'Tempa Dashboard'",
+                title="Change dashboard page title to 'Paperclip Dashboard'",
                 description="Change the title",
-                category="tempa-feature",
-                target_repo="maxshepcross/tempa",
+                category="paperclip-feature",
+                target_repo="maxshepcross/paperclip",
                 status="researching",
             )
         ]

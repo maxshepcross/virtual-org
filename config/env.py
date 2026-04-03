@@ -1,4 +1,4 @@
-"""Shared environment loading for the Virtual Org app."""
+"""Shared environment loading for the workspace automation app."""
 
 from pathlib import Path
 from typing import Union

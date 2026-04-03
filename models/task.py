@@ -1,7 +1,7 @@
 """Task data model — work items claimed and executed by agents.
 
-Mirrors Tempa's job_queue pattern: atomic claiming with FOR UPDATE SKIP LOCKED,
-lease-based heartbeating, append-only event log.
+Uses atomic claiming with FOR UPDATE SKIP LOCKED, lease-based heartbeating,
+and an append-only event log.
 """
 
 from __future__ import annotations

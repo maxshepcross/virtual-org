@@ -36,13 +36,16 @@ def _build_claude_prompt(task: Task, research: dict) -> str:
     approach = research.get("approach", [])
     risks = research.get("risks", [])
 
-    prompt = f"""You are implementing a feature for the Tempa codebase.
+    prompt = f"""You are implementing a change for the Paperclip-based build.
 
 ## Task
 {task.title}
 
 ## Description
 {task.description}
+
+## Target repo
+{task.target_repo or "Not provided"}
 
 ## Implementation Plan (from research)
 {chr(10).join(f"- {step}" for step in approach)}
@@ -117,7 +120,11 @@ def run_implementation(task: Task, research: dict) -> dict:
         }
 
     # Commit and push
-    commit_msg = f"virtual-org: {task.title}\n\nIdea #{task.idea_id} → Task #{task.id}\nImplemented by Virtual Org agent."
+    commit_msg = (
+        f"paperclip: {task.title}\n\n"
+        f"Idea #{task.idea_id} → Task #{task.id}\n"
+        "Implemented by the Paperclip workflow."
+    )
     pushed = commit_and_push(repo_dir, branch, commit_msg)
 
     if not pushed:
@@ -146,7 +153,7 @@ def run_implementation(task: Task, research: dict) -> dict:
 
 ---
 
-*Automated by [Virtual Org](https://github.com/maxshepcross/virtual-org) — Idea #{task.idea_id} → Task #{task.id}*
+*Automated by the Paperclip workflow — Idea #{task.idea_id} → Task #{task.id}*
 """
 
     pr_result = open_pr(

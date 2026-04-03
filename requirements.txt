@@ -1,4 +1,4 @@
-# Virtual Org dependencies
+# Workspace automation dependencies
 anthropic>=0.52.0
 slack-bolt>=1.21.0
 slack-sdk>=3.33.0

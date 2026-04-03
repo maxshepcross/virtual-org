@@ -1,50 +1,47 @@
-# Virtual Org
+# Virtual Org Workspace
 
-Personal AI operating system. Capture ideas on the go via Slack DM, agents triage, research, and implement them — opening PRs while you're still on your walk.
+This workspace is now aligned to the Paperclip-based build only.
 
-## Quick Start
+The older Tempa-specific story still exists in parts of the codebase because this repo started as a different prototype. Treat that as legacy scaffolding, not as the current product direction.
+
+## Current Rules
+
+- New work should assume a Paperclip-based build.
+- Do not add new Tempa-specific prompts, categories, defaults, or repo targets.
+- Do not assume a default target repo. Set `ALLOWED_REPOS` explicitly in `.env`.
+- If you touch legacy files, prefer removing hidden assumptions instead of extending them.
+
+## What This Repo Still Contains
+
+- A legacy Slack capture and worker loop in `bot.py`, `triage.py`, and `worker.py`
+- Research and implementation helpers in `research.py` and `implement.py`
+- An older content pipeline experiment in `content_pipeline.py`
+
+These files are still useful as raw material, but they are not the source of truth for strategy.
+
+## Legacy Local Run
+
+If you need to run the current Python harness locally:
 
 ```bash
 python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp .env.example .env  # Fill in your keys
+cp .env.example .env
 
-.venv/bin/python3 scripts/setup_db.py   # Bootstrap Postgres
-.venv/bin/python3 bot.py                # Slack bot + triage
-.venv/bin/python3 worker.py             # Task worker (separate terminal)
+.venv/bin/python3 scripts/setup_db.py
+.venv/bin/python3 bot.py
+.venv/bin/python3 worker.py
 ```
 
-## Keep It Running On Your Mac
+## macOS Background Services
 
-If you want Virtual Org to start automatically when you log in and restart if it crashes, use the built-in macOS service manager:
+If you want the legacy bot and worker to restart automatically on your Mac:
 
 ```bash
 chmod +x scripts/install_launchd_services.sh scripts/uninstall_launchd_services.sh scripts/status_launchd_services.sh
 ./scripts/install_launchd_services.sh
 ```
 
-This keeps the bot and worker running in the background on your Mac. Logs go to `.context/launchd-logs/`.
+Logs go to `.context/launchd-logs/`.
 
-Check status:
-
-```bash
-./scripts/status_launchd_services.sh
-```
-
-Remove the background services:
-
-```bash
-./scripts/uninstall_launchd_services.sh
-```
-
-Important: this is "always on" only while your Mac is awake and logged in. If you want true 24/7 uptime, move the bot and worker to a cloud host.
-
-## How It Works
-
-1. **You DM the Slack bot** with a raw idea (text, voice memo, photo)
-2. **Triage agent** classifies it: category, effort, impact, approach
-3. **Research agent** explores the codebase, checks feasibility
-4. **Implementation agent** makes changes via Claude Code, opens a PR
-5. **You review the PR** when you sit down
-
-See [CLAUDE.md](CLAUDE.md) for full documentation.
+See [CLAUDE.md](CLAUDE.md) for the workspace guide agents should follow.
