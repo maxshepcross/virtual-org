@@ -14,8 +14,12 @@ Use it for studio-wide automation, task routing, repo handoff rules, and shared 
 
 - `research.py` for turning a studio task into an implementation plan
 - `implement.py` for applying a plan in an explicitly allowed target repo
-- `models/task.py` for queued task storage and leasing
+- `config/` for model settings, timing defaults, env loading, and the repo allowlist
+- `models/task.py` for Postgres-backed task storage, leasing, heartbeats, and event history
 - `services/github_ops.py` for safe branch and PR helpers
+- `prompts/research.md` for the research output template
+- `scripts/setup_db.py` for creating the task database schema
+- `tests/` for regression coverage around env loading, timeouts, branch creation, and research prompt handling
 
 ## What Does Not Live Here
 
@@ -27,6 +31,8 @@ Those old systems were removed on purpose so future agents do not confuse this w
 
 ## Local Setup
 
+This project expects a local Python environment, which is an isolated box for its dependencies, plus a `.env` file for secrets and repo rules.
+
 ```bash
 python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
@@ -34,12 +40,18 @@ cp .env.example .env
 .venv/bin/python3 scripts/setup_db.py
 ```
 
+Important `.env` values:
+
+- `DATABASE_URL` points to the Postgres database used for queued tasks.
+- `ALLOWED_REPOS` is a comma-separated allowlist of repos this workspace may change.
+- `ANTHROPIC_API_KEY` and `GITHUB_TOKEN` should be set in `.env`, never hardcoded in source.
+
 ## Verification
 
 Run the test suite with:
 
 ```bash
-.venv/bin/python3 -m unittest
+.venv/bin/python3 -m unittest discover -s tests
 ```
 
-See [CLAUDE.md](CLAUDE.md) for the workspace rules agents should follow.
+See [CLAUDE.md](CLAUDE.md) and [AGENTS.md](AGENTS.md) for the workspace rules agents should follow.
