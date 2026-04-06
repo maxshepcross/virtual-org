@@ -1,39 +1,43 @@
 # Workspace Guide
 
-## Current Direction
+## Identity
 
-This workspace is for the Paperclip-based build only.
+This workspace belongs to AI Venture Studio.
 
-The repo still contains an older Virtual Org prototype that talked about Tempa, Slack triage, and a broader automation plan. That older framing is legacy context. It should not guide new work unless a task explicitly says to preserve or migrate it.
+It is a studio operations repo, not the default product repo. Its job is to coordinate work across multiple businesses and codebases without guessing where code should be changed.
 
-## Working Rules
+## Non-Negotiable Rules
 
-- Default to Paperclip-oriented work.
-- Do not introduce new Tempa-specific assumptions.
-- Do not hard-code a default target repo. Use `ALLOWED_REPOS` from `.env`.
-- Prefer small cleanup and refactor changes that reduce confusion for future agents.
-- If you touch legacy files, either make them generic or clearly mark them as legacy.
+- Never assume this repo is the target for product feature work.
+- Only change another codebase when that repo is explicitly named and present in `ALLOWED_REPOS`.
+- If the task is unclear about which repo or workspace should be changed, stop and ask instead of guessing.
+- Keep the distinction clear between:
+  - this workspace, which holds studio automation and routing logic
+  - target repos, which hold the actual product code
 
-## What Is In This Repo
+## What This Repo Contains
 
-### Legacy Automation Harness
+- `research.py` to create implementation plans for studio tasks
+- `implement.py` to execute approved changes in an explicit target repo
+- `models/task.py` for queued task records and leases
+- `services/github_ops.py` for branch creation and PR opening
+- `scripts/setup_db.py` for the minimal task database schema
 
-- `bot.py` listens for Slack messages and stores raw ideas.
-- `triage.py` turns raw ideas into structured tasks.
-- `worker.py` claims tasks, runs research, then runs implementation.
-- `research.py` inspects a target repo and drafts an implementation plan.
-- `implement.py` runs Claude Code in a local clone and opens a PR.
+## Removed On Purpose
 
-### Older Experiments
+- Legacy intake flows
+- Legacy notification plumbing
+- Content interview and draft pipelines
+- Background launchd scripts tied to that legacy workflow
 
-- `content_pipeline.py` and `models/content.py` are part of an older social content workflow.
-- `prompts/` contains the LLM prompts used by the legacy harness.
+Do not reintroduce those systems unless a future task explicitly asks for them.
 
 ## Safe Defaults
 
-- Use `paperclip-feature` and `paperclip-bug` for new code-task categories.
-- Keep support for older `tempa-feature` and `tempa-bug` rows only where it is cheap and harmless.
-- Require an explicit repo allowlist before automated code changes run.
+- Treat this repo as the control plane for the studio.
+- Require an explicit repo allowlist before any automated code change runs.
+- Prefer generic language like "task", "target repo", and "studio" over product-specific assumptions.
+- Keep documentation blunt and unambiguous so new agents do not confuse workspace identity with product identity.
 
 ## Local Run
 
@@ -42,6 +46,5 @@ python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env
 .venv/bin/python3 scripts/setup_db.py
-.venv/bin/python3 bot.py
-.venv/bin/python3 worker.py
+.venv/bin/python3 -m unittest
 ```

@@ -1,47 +1,45 @@
-# Virtual Org Workspace
+# AI Venture Studio Workspace
 
-This workspace is now aligned to the Paperclip-based build only.
+This repo is the control room for AI Venture Studio.
 
-The older Tempa-specific story still exists in parts of the codebase because this repo started as a different prototype. Treat that as legacy scaffolding, not as the current product direction.
+Use it for studio-wide automation, task routing, repo handoff rules, and shared operational code. Do not treat it as the default place to build product features.
 
-## Current Rules
+## Build Location Rule
 
-- New work should assume a Paperclip-based build.
-- Do not add new Tempa-specific prompts, categories, defaults, or repo targets.
-- Do not assume a default target repo. Set `ALLOWED_REPOS` explicitly in `.env`.
-- If you touch legacy files, prefer removing hidden assumptions instead of extending them.
+- If a task is about a product, client app, or business-specific codebase, work in an explicitly named target repo from `ALLOWED_REPOS`.
+- If a task is about studio operations, repo routing, automation, or documentation for this workspace, work here.
+- If the task does not clearly say which repo or workspace to change, stop and ask. Do not guess.
 
-## What This Repo Still Contains
+## What Lives Here
 
-- A legacy Slack capture and worker loop in `bot.py`, `triage.py`, and `worker.py`
-- Research and implementation helpers in `research.py` and `implement.py`
-- An older content pipeline experiment in `content_pipeline.py`
+- `research.py` for turning a studio task into an implementation plan
+- `implement.py` for applying a plan in an explicitly allowed target repo
+- `models/task.py` for queued task storage and leasing
+- `services/github_ops.py` for safe branch and PR helpers
 
-These files are still useful as raw material, but they are not the source of truth for strategy.
+## What Does Not Live Here
 
-## Legacy Local Run
+- Product feature work by default
+- Legacy intake flows
+- Legacy content pipeline logic
 
-If you need to run the current Python harness locally:
+Those old systems were removed on purpose so future agents do not confuse this workspace with an old prototype.
+
+## Local Setup
 
 ```bash
 python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env
-
 .venv/bin/python3 scripts/setup_db.py
-.venv/bin/python3 bot.py
-.venv/bin/python3 worker.py
 ```
 
-## macOS Background Services
+## Verification
 
-If you want the legacy bot and worker to restart automatically on your Mac:
+Run the test suite with:
 
 ```bash
-chmod +x scripts/install_launchd_services.sh scripts/uninstall_launchd_services.sh scripts/status_launchd_services.sh
-./scripts/install_launchd_services.sh
+.venv/bin/python3 -m unittest
 ```
 
-Logs go to `.context/launchd-logs/`.
-
-See [CLAUDE.md](CLAUDE.md) for the workspace guide agents should follow.
+See [CLAUDE.md](CLAUDE.md) for the workspace rules agents should follow.

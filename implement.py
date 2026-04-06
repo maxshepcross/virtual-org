@@ -1,4 +1,4 @@
-"""Implementation agent — uses Claude Code as a subprocess to make changes and open PRs."""
+"""Implementation helper that applies studio tasks in explicit target repos."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ REPOS_DIR = Path(__file__).parent / ".repos"
 
 
 def _format_timeout(seconds: int) -> str:
-    """Return a human-readable timeout string for Slack and task logs."""
+    """Return a human-readable timeout string."""
     if seconds % 60 == 0:
         minutes = seconds // 60
         unit = "minute" if minutes == 1 else "minutes"
@@ -36,7 +36,7 @@ def _build_claude_prompt(task: Task, research: dict) -> str:
     approach = research.get("approach", [])
     risks = research.get("risks", [])
 
-    prompt = f"""You are implementing a change for the Paperclip-based build.
+    prompt = f"""You are implementing a change for AI Venture Studio.
 
 ## Task
 {task.title}
@@ -61,11 +61,12 @@ def _build_claude_prompt(task: Task, research: dict) -> str:
 
 ## Instructions
 1. Make the changes described in the implementation plan
-2. Keep changes minimal and focused — only change what's needed
-3. Follow existing code patterns and style
-4. Run tests if they exist: python -m pytest tests/ -x
-5. Do NOT update documentation files (CLAUDE.md, CHANGELOG.md, etc) — that's done separately
-6. Do NOT add unnecessary error handling, comments, or type annotations to code you didn't change
+2. Only edit the explicit target repo. Do not change the studio control repo.
+3. Keep changes minimal and focused
+4. If the task details and target repo do not match, stop and explain the mismatch
+5. Run tests if they exist: python -m pytest tests/ -x
+6. Do NOT update documentation files unless the plan explicitly calls for it
+7. Do NOT add unnecessary comments or refactors outside the task
 """
     return prompt
 
@@ -121,9 +122,9 @@ def run_implementation(task: Task, research: dict) -> dict:
 
     # Commit and push
     commit_msg = (
-        f"paperclip: {task.title}\n\n"
-        f"Idea #{task.idea_id} → Task #{task.id}\n"
-        "Implemented by the Paperclip workflow."
+        f"studio: {task.title}\n\n"
+        f"Task #{task.id}\n"
+        "Implemented by the AI Venture Studio workflow."
     )
     pushed = commit_and_push(repo_dir, branch, commit_msg)
 
@@ -153,7 +154,7 @@ def run_implementation(task: Task, research: dict) -> dict:
 
 ---
 
-*Automated by the Paperclip workflow — Idea #{task.idea_id} → Task #{task.id}*
+*Automated by the AI Venture Studio workflow — Task #{task.id}*
 """
 
     pr_result = open_pr(
