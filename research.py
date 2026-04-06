@@ -1,4 +1,4 @@
-"""Research agent — investigates ideas, assesses feasibility, produces implementation plans."""
+"""Research helper for studio tasks and target repos."""
 
 from __future__ import annotations
 
@@ -86,23 +86,9 @@ def run_research(task: Task) -> dict:
     """Research a task and return structured findings."""
     client = anthropic.Anthropic()
 
-    # Build context
     triage_sketch: Any = ""
-    if task.idea_id:
-        from models.idea import _conn
-        import psycopg2.extras
-        conn = _conn()
-        try:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT triage_json FROM ideas WHERE id = %s", (task.idea_id,))
-                row = cur.fetchone()
-                if row and row["triage_json"]:
-                    tj = row["triage_json"] if isinstance(row["triage_json"], dict) else json.loads(row["triage_json"])
-                    triage_sketch = tj.get("approach_sketch", "")
-        finally:
-            conn.close()
 
-    # Search codebase if it's a code task
+    # Search the named codebase only when the repo is explicit and allowed.
     codebase_context = ""
     if task.target_repo and task.target_repo in ALLOWED_REPOS:
         try:
@@ -118,10 +104,7 @@ def run_research(task: Task) -> dict:
     prompt = prompt.replace("{category}", _coerce_prompt_value(task.category))
     prompt = prompt.replace("{description}", _coerce_prompt_value(task.description))
     prompt = prompt.replace("{target_repo}", _coerce_prompt_value(task.target_repo or "N/A"))
-    prompt = prompt.replace(
-        "{approach_sketch}",
-        _coerce_prompt_value(triage_sketch) or "None provided",
-    )
+    prompt = prompt.replace("{approach_sketch}", _coerce_prompt_value(triage_sketch) or "None provided")
 
     if codebase_context:
         prompt += f"\n\n## Codebase search results\n\n{codebase_context}"

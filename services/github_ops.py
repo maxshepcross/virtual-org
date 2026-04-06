@@ -32,23 +32,15 @@ def _run_git(repo_dir: Path, args: list[str], timeout: int) -> subprocess.Comple
 
 
 def create_branch(repo_dir: Path, task_id: int, title: str) -> str:
-    """Create a clean branch for this task from the latest main."""
-    branch = f"paperclip/idea-{task_id}-{slugify(title)}"
+    """Create a fresh task branch from origin/main without rewriting dirty repos."""
+    branch = f"studio/task-{task_id}-{slugify(title)}"
 
-    _run_git(repo_dir, ["checkout", "main"], timeout=30)
     _run_git(repo_dir, ["fetch", "origin", "main"], timeout=60)
-    _run_git(repo_dir, ["reset", "--hard", "origin/main"], timeout=30)
-    _run_git(repo_dir, ["clean", "-fd"], timeout=30)
+    status = _run_git(repo_dir, ["status", "--porcelain"], timeout=10).stdout.strip()
+    if status:
+        raise RuntimeError(f"Refusing to create branch in dirty repo: {repo_dir}")
 
-    existing_branches = _run_git(
-        repo_dir,
-        ["branch", "--list", branch],
-        timeout=10,
-    ).stdout.strip()
-    if existing_branches:
-        _run_git(repo_dir, ["branch", "-D", branch], timeout=10)
-
-    _run_git(repo_dir, ["checkout", "-b", branch], timeout=10)
+    _run_git(repo_dir, ["checkout", "-B", branch, "origin/main"], timeout=30)
 
     return branch
 

@@ -1,4 +1,4 @@
-"""Task data model — work items claimed and executed by agents.
+"""Task data model for queued studio work.
 
 Uses atomic claiming with FOR UPDATE SKIP LOCKED, lease-based heartbeating,
 and an append-only event log.
@@ -60,20 +60,20 @@ def _row_to_task(row: dict) -> Task:
 
 
 def create_task(
-    idea_id: int,
+    idea_id: int | None,
     title: str,
     description: str,
     category: str,
     target_repo: str | None = None,
 ) -> Task:
-    """Create a new queued task from a triaged idea."""
+    """Create a new queued task."""
     conn = _conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             initial_event = json.dumps([{
                 "type": "queued",
                 "at": datetime.now(timezone.utc).isoformat(),
-                "message": f"Task created from idea #{idea_id}",
+                "message": f"Task created{f' from idea #{idea_id}' if idea_id else ''}",
             }])
             cur.execute(
                 """
