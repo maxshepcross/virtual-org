@@ -16,7 +16,7 @@ import psycopg2
 import psycopg2.extras
 from pydantic import BaseModel, Field
 
-from config.constants import LEASE_SECONDS
+from config.constants import LEASE_SECONDS, TASK_STATUSES_FINAL
 
 
 class Task(BaseModel):
@@ -35,7 +35,11 @@ class Task(BaseModel):
     last_heartbeat_at: datetime | None = None
 
     research_json: dict[str, Any] | None = None
+    execution_stories_json: list[dict[str, Any]] | None = None
     implementation_json: dict[str, Any] | None = None
+    progress_notes_json: list[dict[str, Any]] | None = None
+    verification_json: list[dict[str, Any]] | None = None
+    current_story_id: str | None = None
     pr_url: str | None = None
     pr_number: int | None = None
     pr_status: str | None = None
@@ -53,7 +57,14 @@ def _conn():
 
 
 def _row_to_task(row: dict) -> Task:
-    for field in ("research_json", "implementation_json", "events"):
+    for field in (
+        "research_json",
+        "execution_stories_json",
+        "implementation_json",
+        "progress_notes_json",
+        "verification_json",
+        "events",
+    ):
         if row.get(field) and isinstance(row[field], str):
             row[field] = json.loads(row[field])
     return Task(**row)
@@ -167,14 +178,27 @@ def update_task_status(
             set_parts = ["status = %s", "events = events || %s::jsonb"]
             params: list[Any] = [status, new_event]
 
-            if status in ("done", "failed"):
+            if status in ("done", "failed", "pr_open"):
                 set_parts.append("finished_at = NOW()")
 
             for key, value in fields.items():
-                if key in ("research_json", "implementation_json"):
+                if key in (
+                    "research_json",
+                    "execution_stories_json",
+                    "implementation_json",
+                    "progress_notes_json",
+                    "verification_json",
+                ):
                     set_parts.append(f"{key} = %s")
                     params.append(json.dumps(value))
-                elif key in ("pr_url", "pr_number", "pr_status", "branch_name", "error_message"):
+                elif key in (
+                    "pr_url",
+                    "pr_number",
+                    "pr_status",
+                    "branch_name",
+                    "error_message",
+                    "current_story_id",
+                ):
                     set_parts.append(f"{key} = %s")
                     params.append(value)
 
@@ -247,11 +271,119 @@ def get_active_tasks() -> list[Task]:
             cur.execute(
                 """
                 SELECT * FROM tasks
-                WHERE status NOT IN ('done', 'failed')
+                WHERE status NOT IN %s
                 ORDER BY created_at ASC
                 """
+                ,
+                (tuple(TASK_STATUSES_FINAL),)
             )
             return [_row_to_task(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def complete_manual_verification(
+    task_id: int,
+    story_id: str | None = None,
+    note: str = "",
+) -> Task:
+    """Mark a story waiting on manual review as complete."""
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM tasks WHERE id = %s FOR UPDATE", (task_id,))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Task {task_id} not found")
+
+            task = _row_to_task(row)
+            stories = list(task.execution_stories_json or [])
+            if not stories:
+                raise ValueError(f"Task {task_id} has no execution stories")
+
+            target_story = None
+            for story in stories:
+                if story.get("status") != "awaiting_manual_verification":
+                    continue
+                if story_id is None or story.get("id") == story_id:
+                    target_story = story
+                    break
+
+            if not target_story:
+                raise ValueError("No story is waiting on manual verification")
+
+            target_story["status"] = "completed"
+            next_story = next(
+                (
+                    story for story in sorted(
+                        stories,
+                        key=lambda item: (item.get("priority", 999), item.get("id", "")),
+                    )
+                    if story.get("status") == "pending"
+                ),
+                None,
+            )
+
+            progress_notes = list(task.progress_notes_json or [])
+            progress_notes.append(
+                {
+                    "at": datetime.now(timezone.utc).isoformat(),
+                    "story_id": target_story.get("id"),
+                    "story_title": target_story.get("title"),
+                    "status": "completed",
+                    "message": note or "Manual verification completed.",
+                }
+            )
+
+            verification = list(task.verification_json or [])
+            verification.append(
+                {
+                    "story_id": target_story.get("id"),
+                    "story_title": target_story.get("title"),
+                    "at": datetime.now(timezone.utc).isoformat(),
+                    "results": [
+                        {
+                            "step": "Manual verification",
+                            "status": "passed",
+                            "details": note or "Manual verification completed.",
+                        }
+                    ],
+                }
+            )
+
+            event_message = (
+                f"Manual verification completed for {target_story.get('id')}: "
+                f"{target_story.get('title')}"
+            )
+            cur.execute(
+                """
+                UPDATE tasks
+                SET status = 'implementing',
+                    execution_stories_json = %s,
+                    progress_notes_json = %s,
+                    verification_json = %s,
+                    current_story_id = %s,
+                    events = events || %s::jsonb
+                WHERE id = %s
+                RETURNING *
+                """,
+                (
+                    json.dumps(stories),
+                    json.dumps(progress_notes),
+                    json.dumps(verification),
+                    next_story.get("id") if next_story else None,
+                    json.dumps(
+                        {
+                            "type": "implementing",
+                            "at": datetime.now(timezone.utc).isoformat(),
+                            "message": event_message,
+                        }
+                    ),
+                    task_id,
+                ),
+            )
+            conn.commit()
+            return _row_to_task(cur.fetchone())
     finally:
         conn.close()
 

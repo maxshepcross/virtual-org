@@ -1,4 +1,4 @@
-"""GitHub operations — branch creation and PR opening."""
+"""GitHub operations — branch creation, reuse, and PR opening."""
 
 from __future__ import annotations
 
@@ -45,6 +45,24 @@ def create_branch(repo_dir: Path, task_id: int, title: str) -> str:
     return branch
 
 
+def ensure_branch(repo_dir: Path, task_id: int, title: str, existing_branch: str | None = None) -> str:
+    """Reuse an existing clean branch or create a fresh one from origin/main."""
+    _run_git(repo_dir, ["fetch", "origin", "main"], timeout=60)
+    status = _run_git(repo_dir, ["status", "--porcelain"], timeout=10).stdout.strip()
+    if status:
+        raise RuntimeError(f"Refusing to switch branch in dirty repo: {repo_dir}")
+
+    if existing_branch:
+        try:
+            _run_git(repo_dir, ["checkout", existing_branch], timeout=30)
+            return existing_branch
+        except RuntimeError:
+            _run_git(repo_dir, ["checkout", "-B", existing_branch, f"origin/{existing_branch}"], timeout=30)
+            return existing_branch
+
+    return create_branch(repo_dir, task_id, title)
+
+
 def commit_and_push(repo_dir: Path, branch: str, message: str) -> bool:
     """Stage all changes, commit, and push."""
     subprocess.run(
@@ -59,12 +77,18 @@ def commit_and_push(repo_dir: Path, branch: str, message: str) -> bool:
     )
     if not status.stdout.strip():
         logger.info("No changes to commit on branch %s", branch)
-        return False
+        return {"status": "no_changes"}
 
-    subprocess.run(
+    commit_result = subprocess.run(
         ["git", "commit", "-m", message],
-        cwd=repo_dir, capture_output=True, timeout=30,
+        cwd=repo_dir, capture_output=True, text=True, timeout=30,
     )
+    if commit_result.returncode != 0:
+        logger.error("Commit failed: %s", commit_result.stderr)
+        return {
+            "status": "commit_failed",
+            "error": commit_result.stderr.strip() or commit_result.stdout.strip() or "git commit failed",
+        }
 
     env = os.environ.copy()
     github_token = os.environ.get("GITHUB_TOKEN")
@@ -83,9 +107,12 @@ def commit_and_push(repo_dir: Path, branch: str, message: str) -> bool:
 
     if result.returncode != 0:
         logger.error("Push failed: %s", result.stderr)
-        return False
+        return {
+            "status": "push_failed",
+            "error": result.stderr.strip() or result.stdout.strip() or "git push failed",
+        }
 
-    return True
+    return {"status": "pushed"}
 
 
 def open_pr(

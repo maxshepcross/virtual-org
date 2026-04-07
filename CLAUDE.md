@@ -19,10 +19,10 @@ It is a studio operations repo, not the default product repo. Its job is to coor
 
 - `research.py` to create implementation plans for studio tasks
 - `implement.py` to execute approved changes in an explicit target repo
-- `config/` for model choices, timing defaults, environment loading, and the explicit repo allowlist
-- `models/task.py` for the Postgres-backed task queue, leases, heartbeats, and event log
+- `config/` for model choices, timing defaults, environment loading, the explicit repo allowlist, and studio policy files
+- `models/task.py` for the Postgres-backed task queue, leases, heartbeats, event log, and per-story execution state
 - `services/github_ops.py` for branch creation and PR opening
-- `prompts/research.md` for the structured research prompt template
+- `prompts/` for the structured research, PRD, and task-breakdown prompt templates
 - `scripts/setup_db.py` for the minimal task database schema
 - `tests/` for regression coverage around environment loading, timeouts, branch creation, and research prompt handling
 
@@ -58,4 +58,10 @@ python3.12 -m venv .venv
 cp .env.example .env
 .venv/bin/python3 scripts/setup_db.py
 .venv/bin/python3 -m unittest discover -s tests
+```
+
+If a story is paused for manual verification, use:
+
+```bash
+.venv/bin/python3 scripts/complete_manual_verification.py <task_id> --note "What you checked"
 ```
