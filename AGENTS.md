@@ -17,10 +17,10 @@ It is for studio-wide task routing, research, implementation handoff, and repo s
 
 - `research.py` builds structured implementation plans for studio tasks.
 - `implement.py` runs approved work in an explicit target repo and opens a PR.
-- `config/` holds shared settings such as model names, timeouts, env loading, and the repo allowlist.
-- `models/task.py` stores queued task state in Postgres, including leases, heartbeats, and event history.
+- `config/` holds shared settings such as model names, timeouts, env loading, the repo allowlist, and studio policy files.
+- `models/task.py` stores queued task state in Postgres, including leases, heartbeats, event history, and per-story execution state.
 - `services/github_ops.py` contains guarded branch, commit, push, and PR helpers.
-- `prompts/research.md` defines the research output format.
+- `prompts/` defines the research, PRD, and task-breakdown prompt formats.
 - `scripts/setup_db.py` creates the minimal task database schema.
 - `tests/` covers the core safety and regression cases.
 
@@ -39,4 +39,10 @@ python3.12 -m venv .venv
 cp .env.example .env
 .venv/bin/python3 scripts/setup_db.py
 .venv/bin/python3 -m unittest discover -s tests
+```
+
+If a task is waiting on manual verification, complete that handoff with:
+
+```bash
+.venv/bin/python3 scripts/complete_manual_verification.py <task_id> --note "What you checked"
 ```

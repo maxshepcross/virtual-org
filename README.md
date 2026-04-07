@@ -14,10 +14,10 @@ Use it for studio-wide automation, task routing, repo handoff rules, and shared 
 
 - `research.py` for turning a studio task into an implementation plan
 - `implement.py` for applying a plan in an explicitly allowed target repo
-- `config/` for model settings, timing defaults, env loading, and the repo allowlist
-- `models/task.py` for Postgres-backed task storage, leasing, heartbeats, and event history
+- `config/` for model settings, timing defaults, env loading, the repo allowlist, and studio policy files
+- `models/task.py` for Postgres-backed task storage, leasing, heartbeats, event history, and per-story execution state
 - `services/github_ops.py` for safe branch and PR helpers
-- `prompts/research.md` for the research output template
+- `prompts/` for research, PRD, and task-breakdown prompt templates
 - `scripts/setup_db.py` for creating the task database schema
 - `tests/` for regression coverage around env loading, timeouts, branch creation, and research prompt handling
 
@@ -52,6 +52,12 @@ Run the test suite with:
 
 ```bash
 .venv/bin/python3 -m unittest discover -s tests
+```
+
+If a story is blocked on manual review, mark it complete with:
+
+```bash
+.venv/bin/python3 scripts/complete_manual_verification.py <task_id> --note "What you checked"
 ```
 
 See [CLAUDE.md](CLAUDE.md) and [AGENTS.md](AGENTS.md) for the workspace rules agents should follow.

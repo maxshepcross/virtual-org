@@ -36,7 +36,11 @@ CREATE TABLE IF NOT EXISTS tasks (
 
     -- Agent outputs
     research_json   JSONB,
+    execution_stories_json JSONB,
     implementation_json JSONB,
+    progress_notes_json JSONB,
+    verification_json JSONB,
+    current_story_id TEXT,
     pr_url          TEXT,
     pr_number       INTEGER,
     pr_status       TEXT,
@@ -57,6 +61,11 @@ CREATE INDEX IF NOT EXISTS idx_tasks_idea ON tasks(idea_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idea
     ON tasks(idea_id)
     WHERE status IN ('queued', 'claimed', 'researching', 'implementing');
+
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS execution_stories_json JSONB;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS progress_notes_json JSONB;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS verification_json JSONB;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS current_story_id TEXT;
 """
 
 

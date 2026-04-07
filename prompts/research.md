@@ -17,6 +17,18 @@ Given a task, return a JSON object:
     "Step 2: ...",
     "Step 3: ..."
   ],
+  "execution_stories": [
+    {
+      "id": "STORY-1",
+      "title": "Short story title",
+      "summary": "What this slice delivers",
+      "priority": 1,
+      "acceptance_criteria": ["Check 1", "Check 2"],
+      "verification": ["Test or manual verification step"],
+      "suggested_files": ["path/to/file.py"],
+      "status": "pending"
+    }
+  ],
   "files_to_modify": ["path/to/file1.py", "path/to/file2.py"],
   "files_to_create": ["path/to/new_file.py"],
   "risks": ["Risk 1", "Risk 2"],
@@ -30,11 +42,25 @@ Given a task, return a JSON object:
 ## Research guidelines
 
 - Be specific about which files need changes and what those changes likely look like.
+- If the task can be split into smaller delivery slices, include `execution_stories` in priority order.
+- Keep each story small enough that one worker could complete and verify it in a single pass.
+- Include concrete verification steps for each story, not just implementation notes.
 - Flag when the task is vague, risky, or points at multiple possible systems.
 - If the change could break existing functionality, say so plainly.
 - If the idea is non-code, focus on practical next steps instead of files.
 - If `target_repo` is missing for code work, call that out as a blocker.
 - If the task sounds like it belongs in a different repo than the one named, call out the mismatch plainly.
+
+## Studio policy context
+
+Priority map:
+{priority_map}
+
+Auto-resolution policy:
+{auto_resolution_policy}
+
+Heartbeat:
+{heartbeat}
 
 ## Task to research
 
