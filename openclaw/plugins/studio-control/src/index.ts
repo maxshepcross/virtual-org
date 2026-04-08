@@ -52,7 +52,7 @@ export default definePluginEntry({
     apiAny.registerTool({
       name: "studio_attention",
       description: "Returns current founder attention items from the control plane.",
-      inputSchema: Type.Object({
+      parameters: Type.Object({
         limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
       }),
       async execute(_toolCallId: string, params: Record<string, unknown>) {
@@ -67,7 +67,7 @@ export default definePluginEntry({
     apiAny.registerTool({
       name: "studio_task_state",
       description: "Returns the latest control-plane state for one task.",
-      inputSchema: Type.Object({
+      parameters: Type.Object({
         taskId: Type.Number(),
       }),
       async execute(_toolCallId: string, params: Record<string, unknown>) {
@@ -82,7 +82,7 @@ export default definePluginEntry({
     apiAny.registerTool({
       name: "studio_pending_approvals",
       description: "Returns unresolved approval requests.",
-      inputSchema: Type.Object({
+      parameters: Type.Object({
         limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
       }),
       async execute(_toolCallId: string, params: Record<string, unknown>) {
@@ -97,7 +97,7 @@ export default definePluginEntry({
     apiAny.registerTool({
       name: "studio_create_signal",
       description: "Creates a routed control-plane signal and attention item when needed.",
-      inputSchema: Type.Object({
+      parameters: Type.Object({
         source: Type.String(),
         kind: Type.String(),
         severity: Type.String(),
