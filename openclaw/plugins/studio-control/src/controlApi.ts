@@ -63,8 +63,8 @@ export class ControlApiClient {
 }
 
 export function createControlApiClient(pluginConfig: Record<string, unknown> | undefined): ControlApiClient {
-  const baseUrl = String(pluginConfig?.controlApiBaseUrl ?? process.env.CONTROL_API_BASE_URL ?? "");
-  const token = String(pluginConfig?.controlApiToken ?? process.env.CONTROL_API_TOKEN ?? "");
+  const baseUrl = String(pluginConfig?.controlApiBaseUrl ?? "");
+  const token = String(pluginConfig?.controlApiToken ?? "");
 
   if (!baseUrl || !token) {
     throw new Error("studio-control plugin requires controlApiBaseUrl and controlApiToken");
