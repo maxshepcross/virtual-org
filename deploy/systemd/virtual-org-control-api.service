@@ -11,7 +11,6 @@ Wants=network.target
 Type=simple
 User=root
 WorkingDirectory=/root/virtual-org
-EnvironmentFile=/root/virtual-org/.env
 ExecStart=/root/virtual-org/.venv/bin/python3 /root/virtual-org/scripts/run_api.py
 Restart=always
 RestartSec=5
