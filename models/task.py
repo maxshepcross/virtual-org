@@ -27,6 +27,8 @@ class Task(BaseModel):
     description: str
     category: str
     target_repo: str | None = None
+    venture: str | None = None
+    requested_by: str | None = None
 
     status: str = "queued"
     worker_id: str | None = None
@@ -44,6 +46,10 @@ class Task(BaseModel):
     pr_number: int | None = None
     pr_status: str | None = None
     branch_name: str | None = None
+    slack_channel_id: str | None = None
+    slack_thread_ts: str | None = None
+    approval_state: str | None = None
+    latest_attention_severity: str | None = None
     error_message: str | None = None
 
     events: list[dict[str, Any]] = Field(default_factory=list)
@@ -76,6 +82,10 @@ def create_task(
     description: str,
     category: str,
     target_repo: str | None = None,
+    venture: str | None = None,
+    requested_by: str | None = None,
+    slack_channel_id: str | None = None,
+    slack_thread_ts: str | None = None,
 ) -> Task:
     """Create a new queued task."""
     conn = _conn()
@@ -88,11 +98,33 @@ def create_task(
             }])
             cur.execute(
                 """
-                INSERT INTO tasks (idea_id, title, description, category, target_repo, events)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO tasks (
+                    idea_id,
+                    title,
+                    description,
+                    category,
+                    target_repo,
+                    venture,
+                    requested_by,
+                    slack_channel_id,
+                    slack_thread_ts,
+                    events
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
-                (idea_id, title, description, category, target_repo, initial_event),
+                (
+                    idea_id,
+                    title,
+                    description,
+                    category,
+                    target_repo,
+                    venture,
+                    requested_by,
+                    slack_channel_id,
+                    slack_thread_ts,
+                    initial_event,
+                ),
             )
             conn.commit()
             return _row_to_task(cur.fetchone())

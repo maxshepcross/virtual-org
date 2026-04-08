@@ -1,0 +1,29 @@
+{
+  "plugins": {
+    "enabled": true,
+    "load": {
+      "paths": [
+        "/opt/venture-studio/openclaw/plugins/studio-control"
+      ]
+    },
+    "entries": {
+      "studio-control": {
+        "enabled": true,
+        "config": {
+          "controlApiBaseUrl": "https://control.internal",
+          "controlApiToken": "change-me"
+        }
+      }
+    }
+  },
+  "commands": {
+    "plugins": true
+  },
+  "channels": {
+    "slack": {
+      "enabled": true,
+      "allowUserIds": ["U12345", "U67890"],
+      "allowChannelIds": ["C12345"]
+    }
+  }
+}
