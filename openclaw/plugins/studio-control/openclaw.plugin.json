@@ -12,7 +12,6 @@
       "controlApiToken": {
         "type": "string"
       }
-    },
-    "required": ["controlApiBaseUrl", "controlApiToken"]
+    }
   }
 }
