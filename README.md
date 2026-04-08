@@ -45,6 +45,7 @@ Important `.env` values:
 - `DATABASE_URL` points to the Postgres database used for queued tasks.
 - `ALLOWED_REPOS` is a comma-separated allowlist of repos this workspace may change.
 - `ANTHROPIC_API_KEY` and `GITHUB_TOKEN` should be set in `.env`, never hardcoded in source.
+- `SLACK_DEFAULT_CHANNEL_ID` is the fallback Slack channel for founder-facing alerts when a task does not already have its own Slack route.
 
 ## Verification
 
