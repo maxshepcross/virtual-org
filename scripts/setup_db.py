@@ -212,6 +212,10 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slack_channel_id TEXT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slack_thread_ts TEXT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approval_state TEXT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS latest_attention_severity TEXT;
+ALTER TABLE attention_items ADD COLUMN IF NOT EXISTS slack_message_ts TEXT;
+ALTER TABLE attention_items ADD COLUMN IF NOT EXISTS slack_posted_at TIMESTAMPTZ;
+ALTER TABLE approval_requests ADD COLUMN IF NOT EXISTS slack_message_ts TEXT;
+ALTER TABLE approval_requests ADD COLUMN IF NOT EXISTS slack_posted_at TIMESTAMPTZ;
 """
 
 

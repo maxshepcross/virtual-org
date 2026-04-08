@@ -1,0 +1,182 @@
+"""Post founder-facing attention items and approvals to Slack."""
+
+from __future__ import annotations
+
+import os
+import time
+from dataclasses import dataclass
+
+import httpx
+
+from config.env import load_project_env
+from models.control_plane import (
+    ApprovalRequest,
+    AttentionItem,
+    list_unposted_approval_requests,
+    list_unposted_attention_items,
+    mark_approval_request_posted,
+    mark_attention_item_posted,
+)
+from models.task import get_task, update_task_slack_route
+
+
+@dataclass
+class SlackPostResult:
+    channel: str
+    ts: str | None
+
+
+class SlackDispatcherError(RuntimeError):
+    """Raised when Slack delivery fails."""
+
+
+class SlackClient:
+    """Very small Slack API client for posting plain-text messages."""
+
+    def __init__(self, bot_token: str) -> None:
+        self._client = httpx.Client(
+            base_url="https://slack.com/api/",
+            headers={"Authorization": f"Bearer {bot_token}"},
+            timeout=20.0,
+        )
+
+    def close(self) -> None:
+        self._client.close()
+
+    def post_message(self, *, channel: str, text: str, thread_ts: str | None = None) -> SlackPostResult:
+        payload: dict[str, str] = {"channel": self._resolve_channel(channel), "text": text}
+        if thread_ts:
+            payload["thread_ts"] = thread_ts
+
+        response = self._client.post("chat.postMessage", json=payload)
+        response.raise_for_status()
+        data = response.json()
+        if not data.get("ok"):
+            raise SlackDispatcherError(f"Slack API error: {data.get('error', 'unknown_error')}")
+        return SlackPostResult(channel=str(data.get("channel", payload["channel"])), ts=data.get("ts"))
+
+    def _resolve_channel(self, channel: str) -> str:
+        if not channel.startswith("#"):
+            return channel
+
+        target_name = channel.removeprefix("#")
+        cursor: str | None = None
+        while True:
+            params = {
+                "exclude_archived": "true",
+                "limit": "200",
+                "types": "public_channel,private_channel",
+            }
+            if cursor:
+                params["cursor"] = cursor
+            response = self._client.get("conversations.list", params=params)
+            response.raise_for_status()
+            data = response.json()
+            if not data.get("ok"):
+                raise SlackDispatcherError(f"Slack API error: {data.get('error', 'unknown_error')}")
+
+            for conversation in data.get("channels", []):
+                if conversation.get("name") == target_name:
+                    return str(conversation["id"])
+
+            cursor = data.get("response_metadata", {}).get("next_cursor") or None
+            if not cursor:
+                break
+
+        raise SlackDispatcherError(f"Slack channel {channel} was not found for the bot token.")
+
+
+def _format_attention_item(item: AttentionItem) -> str:
+    headline = f"[{item.severity.upper()}] {item.headline}"
+    lines = [headline]
+    if item.task_id is not None:
+        lines.append(f"Task: {item.task_id}")
+    if item.venture:
+        lines.append(f"Venture: {item.venture}")
+    lines.append(f"Bucket: {item.bucket}")
+    lines.append(f"Recommended action: {item.recommended_action}")
+    return "\n".join(lines)
+
+
+def _format_approval_request(request: ApprovalRequest) -> str:
+    lines = [
+        f"[APPROVAL NEEDED] {request.action_type}",
+        f"Approval ID: {request.id}",
+        f"Task: {request.task_id}",
+        f"Target: {request.target_summary}",
+        "Review the request in the control plane and approve or deny it.",
+    ]
+    return "\n".join(lines)
+
+
+def _should_claim_task_thread(task_id: int | None, provided_thread_ts: str | None) -> bool:
+    if task_id is None or provided_thread_ts:
+        return False
+    task = get_task(task_id)
+    return bool(task) and not task.slack_thread_ts
+
+
+def dispatch_once(limit: int = 25) -> dict[str, int]:
+    load_project_env()
+    bot_token = os.getenv("SLACK_BOT_TOKEN", "").strip()
+    if not bot_token:
+        raise SlackDispatcherError("SLACK_BOT_TOKEN is not configured in .env.")
+
+    attention_items = list_unposted_attention_items(limit=limit)
+    approvals = list_unposted_approval_requests(limit=limit)
+
+    sent_attention = 0
+    sent_approvals = 0
+    client = SlackClient(bot_token)
+    try:
+        for item in attention_items:
+            if not item.slack_channel_id:
+                continue
+            result = client.post_message(
+                channel=item.slack_channel_id,
+                thread_ts=item.slack_thread_ts,
+                text=_format_attention_item(item),
+            )
+            mark_attention_item_posted(item.id, slack_message_ts=result.ts)
+            if result.ts and _should_claim_task_thread(item.task_id, item.slack_thread_ts):
+                update_task_slack_route(
+                    item.task_id,
+                    slack_channel_id=result.channel,
+                    slack_thread_ts=result.ts,
+                )
+            sent_attention += 1
+
+        for request in approvals:
+            if not request.requested_slack_channel_id:
+                continue
+            result = client.post_message(
+                channel=request.requested_slack_channel_id,
+                thread_ts=request.requested_slack_thread_ts,
+                text=_format_approval_request(request),
+            )
+            mark_approval_request_posted(request.id, slack_message_ts=result.ts)
+            if result.ts and _should_claim_task_thread(request.task_id, request.requested_slack_thread_ts):
+                update_task_slack_route(
+                    request.task_id,
+                    slack_channel_id=result.channel,
+                    slack_thread_ts=result.ts,
+                )
+            sent_approvals += 1
+    finally:
+        client.close()
+
+    return {
+        "attention_items_sent": sent_attention,
+        "approval_requests_sent": sent_approvals,
+    }
+
+
+def run_forever() -> None:
+    load_project_env()
+    interval_seconds = int(os.getenv("SLACK_DISPATCH_INTERVAL_SECONDS", "10"))
+    while True:
+        try:
+            dispatch_once()
+        except Exception as exc:  # pragma: no cover - service loop logging path
+            print(f"Slack dispatcher error: {exc}", flush=True)
+        time.sleep(max(2, interval_seconds))

@@ -1,0 +1,20 @@
+# Systemd unit for the always-on Slack dispatcher.
+# Copy this file to /etc/systemd/system/virtual-org-slack-dispatcher.service on the server.
+
+[Unit]
+Description=AI Venture Studio Slack Dispatcher
+After=network.target virtual-org-control-api.service
+Wants=network.target virtual-org-control-api.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/virtual-org
+ExecStart=/root/virtual-org/.venv/bin/python3 /root/virtual-org/scripts/run_slack_dispatcher.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

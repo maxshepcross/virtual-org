@@ -54,6 +54,8 @@ class AttentionItem(BaseModel):
     recommended_action: str
     slack_channel_id: str | None = None
     slack_thread_ts: str | None = None
+    slack_message_ts: str | None = None
+    slack_posted_at: datetime | None = None
     status: str = "open"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     resolved_at: datetime | None = None
@@ -68,6 +70,8 @@ class ApprovalRequest(BaseModel):
     status: str = "pending"
     requested_slack_channel_id: str | None = None
     requested_slack_thread_ts: str | None = None
+    slack_message_ts: str | None = None
+    slack_posted_at: datetime | None = None
     approved_by_slack_user_id: str | None = None
     resolution_note: str | None = None
     external_event_id: str | None = None
@@ -338,6 +342,47 @@ def list_attention_items(limit: int = 50, status: str = "open") -> list[Attentio
         conn.close()
 
 
+def list_unposted_attention_items(limit: int = 50) -> list[AttentionItem]:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM attention_items
+                WHERE status = 'open'
+                  AND slack_channel_id IS NOT NULL
+                  AND slack_posted_at IS NULL
+                ORDER BY created_at ASC, id ASC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [_row_to_model(row, AttentionItem) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def mark_attention_item_posted(attention_item_id: int, *, slack_message_ts: str | None = None) -> AttentionItem | None:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                UPDATE attention_items
+                SET slack_message_ts = %s,
+                    slack_posted_at = NOW()
+                WHERE id = %s
+                RETURNING *
+                """,
+                (slack_message_ts, attention_item_id),
+            )
+            conn.commit()
+            return _row_to_model(cur.fetchone(), AttentionItem)
+    finally:
+        conn.close()
+
+
 def create_approval_request(
     *,
     task_id: int,
@@ -421,6 +466,47 @@ def list_pending_approvals(limit: int = 50) -> list[ApprovalRequest]:
                 (limit,),
             )
             return [_row_to_model(row, ApprovalRequest) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def list_unposted_approval_requests(limit: int = 50) -> list[ApprovalRequest]:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM approval_requests
+                WHERE status = 'pending'
+                  AND requested_slack_channel_id IS NOT NULL
+                  AND slack_posted_at IS NULL
+                ORDER BY created_at ASC, id ASC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [_row_to_model(row, ApprovalRequest) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def mark_approval_request_posted(approval_id: int, *, slack_message_ts: str | None = None) -> ApprovalRequest | None:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                UPDATE approval_requests
+                SET slack_message_ts = %s,
+                    slack_posted_at = NOW()
+                WHERE id = %s
+                RETURNING *
+                """,
+                (slack_message_ts, approval_id),
+            )
+            conn.commit()
+            return _row_to_model(cur.fetchone(), ApprovalRequest)
     finally:
         conn.close()
 

@@ -46,6 +46,8 @@ Important `.env` values:
 - `ALLOWED_REPOS` is a comma-separated allowlist of repos this workspace may change.
 - `ANTHROPIC_API_KEY` and `GITHUB_TOKEN` should be set in `.env`, never hardcoded in source.
 - `SLACK_DEFAULT_CHANNEL_ID` is the fallback Slack channel for founder-facing alerts when a task does not already have its own Slack route.
+- `SLACK_BOT_TOKEN` is the Slack bot token used by the always-on dispatcher to post alerts and approval requests.
+- `SLACK_DISPATCH_INTERVAL_SECONDS` controls how often the dispatcher checks for new items to post.
 
 ## Verification
 
@@ -93,6 +95,29 @@ Useful follow-up commands:
 ```bash
 journalctl -u virtual-org-control-api -f
 curl http://127.0.0.1:8080/health
+```
+
+## Keep Slack Notifications Running 24/7
+
+Founder-facing Slack delivery now uses a small dispatcher service. It checks for new attention items and approval requests, posts them into Slack, and marks them as posted so they are not repeated.
+
+Service template:
+
+- [deploy/systemd/virtual-org-slack-dispatcher.service](/Users/maxshepherd-cross/conductor/workspaces/virtual-org/washington-v1/deploy/systemd/virtual-org-slack-dispatcher.service)
+
+Typical install steps on the server:
+
+```bash
+cp deploy/systemd/virtual-org-slack-dispatcher.service /etc/systemd/system/virtual-org-slack-dispatcher.service
+systemctl daemon-reload
+systemctl enable --now virtual-org-slack-dispatcher
+systemctl status virtual-org-slack-dispatcher
+```
+
+Useful follow-up commands:
+
+```bash
+journalctl -u virtual-org-slack-dispatcher -f
 ```
 
 If a story is blocked on manual review, mark it complete with:
