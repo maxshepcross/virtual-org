@@ -47,7 +47,7 @@ export default definePluginEntry({
   description: "Bridges OpenClaw to the AI Venture Studio control API.",
   register(api) {
     const apiAny = api as any;
-    const client = createControlApiClient(apiAny.pluginConfig);
+    const getClient = () => createControlApiClient(apiAny.pluginConfig);
 
     apiAny.registerTool({
       name: "studio_attention",
@@ -56,6 +56,7 @@ export default definePluginEntry({
         limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
       }),
       async execute(_toolCallId: string, params: Record<string, unknown>) {
+        const client = getClient();
         const limit = Number(params?.limit ?? 20);
         const payload = await client.get(`/v1/attention?limit=${limit}`);
         return {
@@ -71,6 +72,7 @@ export default definePluginEntry({
         taskId: Type.Number(),
       }),
       async execute(_toolCallId: string, params: Record<string, unknown>) {
+        const client = getClient();
         const taskId = Number(params?.taskId);
         const payload = await client.get(`/v1/tasks/${taskId}/state`);
         return {
@@ -86,6 +88,7 @@ export default definePluginEntry({
         limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
       }),
       async execute(_toolCallId: string, params: Record<string, unknown>) {
+        const client = getClient();
         const limit = Number(params?.limit ?? 20);
         const payload = await client.get(`/v1/approvals/pending?limit=${limit}`);
         return {
@@ -106,6 +109,7 @@ export default definePluginEntry({
         venture: Type.Optional(Type.String()),
       }),
       async execute(_toolCallId: string, params: Record<string, unknown>) {
+        const client = getClient();
         const payload = await client.post("/v1/signals", {
           source: params?.source,
           kind: params?.kind,
@@ -123,6 +127,7 @@ export default definePluginEntry({
     apiAny.registerHook(
       "before_tool_call",
       async (event: any) => {
+        const client = getClient();
         const toolName = event.tool?.name ?? event.toolName ?? "";
         const actionType = mapToolToAction(toolName);
         if (!actionType) return {};
