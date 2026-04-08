@@ -1,0 +1,5 @@
+{
+  "id": "studio-control",
+  "name": "Studio Control",
+  "description": "Bridges OpenClaw chief and action agents to the AI Venture Studio control API."
+}

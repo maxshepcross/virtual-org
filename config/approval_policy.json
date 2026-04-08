@@ -1,0 +1,13 @@
+{
+  "read_only_actions": ["read", "task_lookup", "task_query", "repo_read", "test_run"],
+  "mutating_actions": [
+    "file_write",
+    "git_push",
+    "pull_request",
+    "network_request",
+    "destructive_shell",
+    "secret_access"
+  ],
+  "approval_required_actions": ["git_push", "pull_request"],
+  "blocked_actions": ["destructive_shell", "secret_access"]
+}

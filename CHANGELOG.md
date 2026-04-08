@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 - 2026-04-08
+
+- Added the first control-plane foundation for the remote OpenClaw architecture: new Postgres tables for agent runs, signals, attention items, approvals, policy decisions, network requests, briefings, and Slack routes.
+- Added a small internal FastAPI app in `api/app.py` plus service modules for policy evaluation, approval handling, signal bucketing, and founder briefings.
+- Added default policy config files for approval and network decisions, extended the task model with Slack and approval fields, and expanded the schema tests to cover the new control-plane tables.
+- Added regression tests for the policy engine, signal routing, and the new API endpoints, and updated `requirements.txt` for the API runtime dependencies.
+
 ## 0.1.4 - 2026-04-07
 
 - Extended the task schema and model with per-story execution state, progress notes, verification logs, and current story tracking.

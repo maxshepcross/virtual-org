@@ -31,7 +31,16 @@ CODE_TASK_CATEGORIES = ["feature", "bug"]
 ACTIONABLE_CATEGORIES = [*TASK_CATEGORIES]
 
 # --- Task statuses ---
-TASK_STATUSES_ACTIVE = ["queued", "claimed", "researching", "implementing"]
+TASK_STATUSES_ACTIVE = [
+    "queued",
+    "claimed",
+    "triaged",
+    "researching",
+    "awaiting_approval",
+    "implementing",
+    "reviewing",
+    "blocked",
+]
 TASK_STATUSES_FINAL = ["pr_open", "done", "failed"]
 
 # --- Allowed repos ---

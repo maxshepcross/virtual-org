@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     description     TEXT NOT NULL,
     category        TEXT NOT NULL,
     target_repo     TEXT,
+    venture         TEXT,
+    requested_by    TEXT,
 
     -- Queue state
     status          TEXT NOT NULL DEFAULT 'queued',
@@ -45,6 +47,10 @@ CREATE TABLE IF NOT EXISTS tasks (
     pr_number       INTEGER,
     pr_status       TEXT,
     branch_name     TEXT,
+    slack_channel_id TEXT,
+    slack_thread_ts TEXT,
+    approval_state  TEXT,
+    latest_attention_severity TEXT,
     error_message   TEXT,
 
     -- Audit
@@ -56,16 +62,156 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_idea ON tasks(idea_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_slack_channel ON tasks(slack_channel_id);
 
 -- Unique: only one active task per idea
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idea
     ON tasks(idea_id)
-    WHERE status IN ('queued', 'claimed', 'researching', 'implementing');
+    WHERE status IN ('queued', 'claimed', 'triaged', 'researching', 'awaiting_approval', 'implementing', 'reviewing', 'blocked');
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id              BIGSERIAL PRIMARY KEY,
+    task_id         BIGINT REFERENCES tasks(id) ON DELETE CASCADE,
+    story_id        TEXT,
+    agent_class     TEXT NOT NULL,
+    agent_role      TEXT NOT NULL,
+    openclaw_session_id TEXT,
+    status          TEXT NOT NULL DEFAULT 'running',
+    resume_context_json JSONB,
+    error_message   TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at     TIMESTAMPTZ,
+    last_heartbeat_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_task_id ON agent_runs(task_id);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
+
+CREATE TABLE IF NOT EXISTS signals (
+    id              BIGSERIAL PRIMARY KEY,
+    source          TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    task_id         BIGINT REFERENCES tasks(id) ON DELETE SET NULL,
+    venture         TEXT,
+    severity        TEXT NOT NULL,
+    summary         TEXT NOT NULL,
+    details_json    JSONB,
+    dedupe_key      TEXT NOT NULL,
+    bucket          TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'open',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_signals_task_id ON signals(task_id);
+CREATE INDEX IF NOT EXISTS idx_signals_bucket ON signals(bucket);
+CREATE INDEX IF NOT EXISTS idx_signals_dedupe ON signals(dedupe_key);
+
+CREATE TABLE IF NOT EXISTS attention_items (
+    id              BIGSERIAL PRIMARY KEY,
+    signal_id       BIGINT REFERENCES signals(id) ON DELETE SET NULL,
+    task_id         BIGINT REFERENCES tasks(id) ON DELETE SET NULL,
+    venture         TEXT,
+    bucket          TEXT NOT NULL,
+    severity        TEXT NOT NULL,
+    headline        TEXT NOT NULL,
+    recommended_action TEXT NOT NULL,
+    slack_channel_id TEXT,
+    slack_thread_ts TEXT,
+    status          TEXT NOT NULL DEFAULT 'open',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at     TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_attention_items_task_id ON attention_items(task_id);
+CREATE INDEX IF NOT EXISTS idx_attention_items_status ON attention_items(status);
+CREATE INDEX IF NOT EXISTS idx_attention_items_bucket ON attention_items(bucket);
+
+CREATE TABLE IF NOT EXISTS approval_requests (
+    id              BIGSERIAL PRIMARY KEY,
+    task_id         BIGINT REFERENCES tasks(id) ON DELETE CASCADE,
+    agent_run_id    BIGINT REFERENCES agent_runs(id) ON DELETE SET NULL,
+    action_type     TEXT NOT NULL,
+    target_summary  TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    requested_slack_channel_id TEXT,
+    requested_slack_thread_ts TEXT,
+    approved_by_slack_user_id TEXT,
+    resolution_note TEXT,
+    external_event_id TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at     TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_approval_requests_external_event_id
+    ON approval_requests(external_event_id)
+    WHERE external_event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_approval_requests_status ON approval_requests(status);
+
+CREATE TABLE IF NOT EXISTS policy_decisions (
+    id              BIGSERIAL PRIMARY KEY,
+    agent_run_id    BIGINT REFERENCES agent_runs(id) ON DELETE SET NULL,
+    task_id         BIGINT REFERENCES tasks(id) ON DELETE CASCADE,
+    story_id        TEXT,
+    tool_name       TEXT,
+    action_type     TEXT NOT NULL,
+    target_type     TEXT,
+    target_host     TEXT,
+    target_repo     TEXT,
+    decision        TEXT NOT NULL,
+    policy_name     TEXT NOT NULL,
+    reason          TEXT NOT NULL,
+    approval_request_id BIGINT REFERENCES approval_requests(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_policy_decisions_task_id ON policy_decisions(task_id);
+CREATE INDEX IF NOT EXISTS idx_policy_decisions_decision ON policy_decisions(decision);
+
+CREATE TABLE IF NOT EXISTS network_requests (
+    id              BIGSERIAL PRIMARY KEY,
+    agent_run_id    BIGINT REFERENCES agent_runs(id) ON DELETE SET NULL,
+    task_id         BIGINT REFERENCES tasks(id) ON DELETE SET NULL,
+    target_host     TEXT NOT NULL,
+    method          TEXT,
+    path_hint       TEXT,
+    decision        TEXT NOT NULL,
+    bytes_sent      BIGINT,
+    bytes_received  BIGINT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_network_requests_task_id ON network_requests(task_id);
+
+CREATE TABLE IF NOT EXISTS briefings (
+    id              BIGSERIAL PRIMARY KEY,
+    scope           TEXT NOT NULL,
+    headline        TEXT NOT NULL,
+    items_json      JSONB NOT NULL DEFAULT '[]'::JSONB,
+    delivered_to    TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS slack_routes (
+    id              BIGSERIAL PRIMARY KEY,
+    task_id         BIGINT REFERENCES tasks(id) ON DELETE CASCADE,
+    slack_channel_id TEXT NOT NULL,
+    slack_thread_ts TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_slack_routes_task_id ON slack_routes(task_id);
 
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS execution_stories_json JSONB;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS progress_notes_json JSONB;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS verification_json JSONB;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS current_story_id TEXT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS venture TEXT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS requested_by TEXT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slack_channel_id TEXT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slack_thread_ts TEXT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approval_state TEXT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS latest_attention_severity TEXT;
 """
 
 

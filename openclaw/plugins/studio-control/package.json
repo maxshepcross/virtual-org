@@ -1,0 +1,24 @@
+{
+  "name": "@venture-studio/openclaw-studio-control",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenClaw bridge plugin for the AI Venture Studio control plane",
+  "openclaw": {
+    "extensions": ["./dist/index.js"]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.41"
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "devDependencies": {
+    "openclaw": "*",
+    "typescript": "^5.8.3"
+  }
+}
