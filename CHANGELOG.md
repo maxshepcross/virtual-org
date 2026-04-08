@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6 - 2026-04-08
+
+- Fixed `scripts/run_api.py` so it can start cleanly on a server without the `PYTHONPATH=...` workaround.
+- Added a Linux `systemd` service template for keeping the control API running 24/7 and restarting it automatically after crashes or reboots.
+- Updated the README with a simple “run the API” and “keep it running” section for the remote OpenClaw box.
+
 ## 0.1.5 - 2026-04-08
 
 - Added the first control-plane foundation for the remote OpenClaw architecture: new Postgres tables for agent runs, signals, attention items, approvals, policy decisions, network requests, briefings, and Slack routes.

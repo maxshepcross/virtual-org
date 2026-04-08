@@ -54,6 +54,46 @@ Run the test suite with:
 .venv/bin/python3 -m unittest discover -s tests
 ```
 
+## Run The Control API
+
+The control API is the small internal web service that OpenClaw talks to.
+
+For local development:
+
+```bash
+.venv/bin/python3 scripts/run_api.py
+```
+
+The API listens on `127.0.0.1:8080` by default and exposes a simple health check at:
+
+```text
+http://127.0.0.1:8080/health
+```
+
+## Keep The Control API Running 24/7
+
+On a Linux server, use the included `systemd` service file. `systemd` is the built-in Linux process manager that starts services on boot and restarts them if they crash.
+
+Service template:
+
+- [deploy/systemd/virtual-org-control-api.service](/Users/maxshepherd-cross/conductor/workspaces/virtual-org/washington-v1/deploy/systemd/virtual-org-control-api.service)
+
+Typical install steps on the server:
+
+```bash
+cp deploy/systemd/virtual-org-control-api.service /etc/systemd/system/virtual-org-control-api.service
+systemctl daemon-reload
+systemctl enable --now virtual-org-control-api
+systemctl status virtual-org-control-api
+```
+
+Useful follow-up commands:
+
+```bash
+journalctl -u virtual-org-control-api -f
+curl http://127.0.0.1:8080/health
+```
+
 If a story is blocked on manual review, mark it complete with:
 
 ```bash
