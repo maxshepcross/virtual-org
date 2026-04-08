@@ -3,19 +3,6 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
 import { createControlApiClient } from "./controlApi.js";
 
-type ToolContext = {
-  args?: Record<string, unknown>;
-  session?: { id?: string };
-};
-
-type HookEvent = {
-  toolName?: string;
-  tool?: { name?: string };
-  args?: Record<string, unknown>;
-  session?: { id?: string };
-  metadata?: Record<string, unknown>;
-};
-
 function mapToolToAction(toolName: string): string | null {
   const normalized = toolName.trim().toLowerCase();
   if (!normalized) return null;
@@ -57,59 +44,57 @@ function asText(payload: unknown): string {
 export default definePluginEntry({
   id: "studio-control",
   name: "Studio Control",
-  async register(api: {
-    pluginConfig?: Record<string, unknown>;
-    registerTool: (tool: unknown, opts?: unknown) => void;
-    registerHook: (events: string | string[], handler: (event: HookEvent) => Promise<unknown>, opts?: unknown) => void;
-  }) {
-    const client = createControlApiClient(api.pluginConfig);
+  description: "Bridges OpenClaw to the AI Venture Studio control API.",
+  register(api) {
+    const apiAny = api as any;
+    const client = createControlApiClient(apiAny.pluginConfig);
 
-    api.registerTool({
+    apiAny.registerTool({
       name: "studio_attention",
       description: "Returns current founder attention items from the control plane.",
       inputSchema: Type.Object({
         limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
       }),
-      async execute(context: ToolContext) {
-        const limit = Number(context.args?.limit ?? 20);
+      async execute(_toolCallId: string, params: Record<string, unknown>) {
+        const limit = Number(params?.limit ?? 20);
         const payload = await client.get(`/v1/attention?limit=${limit}`);
         return {
           content: [{ type: "text", text: asText(payload) }],
         };
       },
-    });
+    } as any);
 
-    api.registerTool({
+    apiAny.registerTool({
       name: "studio_task_state",
       description: "Returns the latest control-plane state for one task.",
       inputSchema: Type.Object({
         taskId: Type.Number(),
       }),
-      async execute(context: ToolContext) {
-        const taskId = Number(context.args?.taskId);
+      async execute(_toolCallId: string, params: Record<string, unknown>) {
+        const taskId = Number(params?.taskId);
         const payload = await client.get(`/v1/tasks/${taskId}/state`);
         return {
           content: [{ type: "text", text: asText(payload) }],
         };
       },
-    });
+    } as any);
 
-    api.registerTool({
+    apiAny.registerTool({
       name: "studio_pending_approvals",
       description: "Returns unresolved approval requests.",
       inputSchema: Type.Object({
         limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
       }),
-      async execute(context: ToolContext) {
-        const limit = Number(context.args?.limit ?? 20);
+      async execute(_toolCallId: string, params: Record<string, unknown>) {
+        const limit = Number(params?.limit ?? 20);
         const payload = await client.get(`/v1/approvals/pending?limit=${limit}`);
         return {
           content: [{ type: "text", text: asText(payload) }],
         };
       },
-    });
+    } as any);
 
-    api.registerTool({
+    apiAny.registerTool({
       name: "studio_create_signal",
       description: "Creates a routed control-plane signal and attention item when needed.",
       inputSchema: Type.Object({
@@ -120,24 +105,24 @@ export default definePluginEntry({
         task_id: Type.Optional(Type.Number()),
         venture: Type.Optional(Type.String()),
       }),
-      async execute(context: ToolContext) {
+      async execute(_toolCallId: string, params: Record<string, unknown>) {
         const payload = await client.post("/v1/signals", {
-          source: context.args?.source,
-          kind: context.args?.kind,
-          severity: context.args?.severity,
-          summary: context.args?.summary,
-          task_id: context.args?.task_id,
-          venture: context.args?.venture,
+          source: params?.source,
+          kind: params?.kind,
+          severity: params?.severity,
+          summary: params?.summary,
+          task_id: params?.task_id,
+          venture: params?.venture,
         });
         return {
           content: [{ type: "text", text: asText(payload) }],
         };
       },
-    });
+    } as any);
 
-    api.registerHook(
+    apiAny.registerHook(
       "before_tool_call",
-      async (event: HookEvent) => {
+      async (event: any) => {
         const toolName = event.tool?.name ?? event.toolName ?? "";
         const actionType = mapToolToAction(toolName);
         if (!actionType) return {};
@@ -164,14 +149,14 @@ export default definePluginEntry({
         if (evaluation.decision === "block") {
           return {
             block: true,
-            reason: evaluation.reason,
+            reason: String(evaluation.reason),
           };
         }
 
         if (evaluation.decision === "require_approval") {
           return {
             requireApproval: true,
-            reason: evaluation.reason,
+            reason: String(evaluation.reason),
           };
         }
 
