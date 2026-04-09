@@ -7,6 +7,7 @@
 - Updated the README with a simple “run the API” and “keep it running” section for the remote OpenClaw box.
 - Added default Slack-route fallback logic so new attention items and approval requests can target a founder channel even when a task does not already have its own Slack route.
 - Added an always-on Slack dispatcher service that posts new attention items and pending approval requests to Slack, stores delivery markers, and reuses task threads to avoid duplicate founder notifications.
+- Added a practical production runbook covering service health checks, restart commands, smoke tests, and common failure recovery steps for the remote OpenClaw box.
 
 ## 0.1.5 - 2026-04-08
 

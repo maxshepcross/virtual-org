@@ -120,6 +120,10 @@ Useful follow-up commands:
 journalctl -u virtual-org-slack-dispatcher -f
 ```
 
+For the full production checklist, restart commands, smoke tests, and common recovery steps, use:
+
+- [docs/production-runbook.md](/Users/maxshepherd-cross/conductor/workspaces/virtual-org/washington-v1/docs/production-runbook.md)
+
 If a story is blocked on manual review, mark it complete with:
 
 ```bash
