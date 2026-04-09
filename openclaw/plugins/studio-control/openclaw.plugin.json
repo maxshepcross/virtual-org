@@ -1,5 +1,17 @@
 {
   "id": "studio-control",
   "name": "Studio Control",
-  "description": "Bridges OpenClaw chief and action agents to the AI Venture Studio control API."
+  "description": "Bridges OpenClaw chief and action agents to the AI Venture Studio control API.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "controlApiBaseUrl": {
+        "type": "string"
+      },
+      "controlApiToken": {
+        "type": "string"
+      }
+    }
+  }
 }

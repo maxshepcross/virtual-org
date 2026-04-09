@@ -45,6 +45,9 @@ Important `.env` values:
 - `DATABASE_URL` points to the Postgres database used for queued tasks.
 - `ALLOWED_REPOS` is a comma-separated allowlist of repos this workspace may change.
 - `ANTHROPIC_API_KEY` and `GITHUB_TOKEN` should be set in `.env`, never hardcoded in source.
+- `SLACK_DEFAULT_CHANNEL_ID` is the fallback Slack channel for founder-facing alerts when a task does not already have its own Slack route.
+- `SLACK_BOT_TOKEN` is the Slack bot token used by the always-on dispatcher to post alerts and approval requests.
+- `SLACK_DISPATCH_INTERVAL_SECONDS` controls how often the dispatcher checks for new items to post.
 
 ## Verification
 
@@ -53,6 +56,73 @@ Run the test suite with:
 ```bash
 .venv/bin/python3 -m unittest discover -s tests
 ```
+
+## Run The Control API
+
+The control API is the small internal web service that OpenClaw talks to.
+
+For local development:
+
+```bash
+.venv/bin/python3 scripts/run_api.py
+```
+
+The API listens on `127.0.0.1:8080` by default and exposes a simple health check at:
+
+```text
+http://127.0.0.1:8080/health
+```
+
+## Keep The Control API Running 24/7
+
+On a Linux server, use the included `systemd` service file. `systemd` is the built-in Linux process manager that starts services on boot and restarts them if they crash.
+
+Service template:
+
+- [deploy/systemd/virtual-org-control-api.service](/Users/maxshepherd-cross/conductor/workspaces/virtual-org/washington-v1/deploy/systemd/virtual-org-control-api.service)
+
+Typical install steps on the server:
+
+```bash
+cp deploy/systemd/virtual-org-control-api.service /etc/systemd/system/virtual-org-control-api.service
+systemctl daemon-reload
+systemctl enable --now virtual-org-control-api
+systemctl status virtual-org-control-api
+```
+
+Useful follow-up commands:
+
+```bash
+journalctl -u virtual-org-control-api -f
+curl http://127.0.0.1:8080/health
+```
+
+## Keep Slack Notifications Running 24/7
+
+Founder-facing Slack delivery now uses a small dispatcher service. It checks for new attention items and approval requests, posts them into Slack, and marks them as posted so they are not repeated.
+
+Service template:
+
+- [deploy/systemd/virtual-org-slack-dispatcher.service](/Users/maxshepherd-cross/conductor/workspaces/virtual-org/washington-v1/deploy/systemd/virtual-org-slack-dispatcher.service)
+
+Typical install steps on the server:
+
+```bash
+cp deploy/systemd/virtual-org-slack-dispatcher.service /etc/systemd/system/virtual-org-slack-dispatcher.service
+systemctl daemon-reload
+systemctl enable --now virtual-org-slack-dispatcher
+systemctl status virtual-org-slack-dispatcher
+```
+
+Useful follow-up commands:
+
+```bash
+journalctl -u virtual-org-slack-dispatcher -f
+```
+
+For the full production checklist, restart commands, smoke tests, and common recovery steps, use:
+
+- [docs/production-runbook.md](/Users/maxshepherd-cross/conductor/workspaces/virtual-org/washington-v1/docs/production-runbook.md)
 
 If a story is blocked on manual review, mark it complete with:
 

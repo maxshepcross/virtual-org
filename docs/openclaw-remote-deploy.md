@@ -56,9 +56,16 @@ What is built here:
 - approval and attention state
 - OpenClaw bridge plugin source
 - chief workspace templates
+- always-on Slack dispatcher for founder alerts and approvals
 
 What still depends on real remote infrastructure:
 - live Slack token and channel wiring
 - real OpenClaw gateway install
 - plugin compile/install on the gateway host
 - production process manager and TLS
+
+## After the first live setup
+
+Once the box is working, use the production runbook for day-to-day operations:
+
+- [docs/production-runbook.md](/Users/maxshepherd-cross/conductor/workspaces/virtual-org/washington-v1/docs/production-runbook.md)

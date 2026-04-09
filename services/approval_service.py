@@ -13,6 +13,8 @@ from models.control_plane import (
     list_pending_approvals,
     resolve_approval_request,
 )
+from models.task import get_task
+from services.slack_routing import resolve_slack_route
 
 
 class ApprovalCreateRequest(BaseModel):
@@ -40,7 +42,19 @@ def _trusted_approvers() -> set[str]:
 
 
 def create_approval(request: ApprovalCreateRequest) -> ApprovalRequest:
-    approval = create_approval_request(**request.model_dump())
+    task = get_task(request.task_id)
+    if not task:
+        raise ValueError(f"Task {request.task_id} was not found.")
+
+    slack_channel_id, slack_thread_ts = resolve_slack_route(
+        task_id=request.task_id,
+        explicit_channel_id=request.requested_slack_channel_id,
+        explicit_thread_ts=request.requested_slack_thread_ts,
+    )
+    payload = request.model_dump()
+    payload["requested_slack_channel_id"] = slack_channel_id
+    payload["requested_slack_thread_ts"] = slack_thread_ts
+    approval = create_approval_request(**payload)
     if not approval:
         raise ValueError("Approval request could not be created.")
     return approval
@@ -59,7 +73,8 @@ def resolve_approval(approval_id: int, request: ApprovalResolutionRequest) -> Ap
         return approval
 
     trusted = _trusted_approvers()
-    if trusted and request.slack_user_id not in trusted:
+    allow_any_slack_user = "*" in trusted
+    if trusted and not allow_any_slack_user and request.slack_user_id not in trusted:
         raise PermissionError("Slack user is not allowed to approve actions.")
 
     normalized_resolution = request.resolution.strip().lower()

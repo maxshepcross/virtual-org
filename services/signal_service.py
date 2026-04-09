@@ -14,6 +14,7 @@ from models.control_plane import (
     create_signal,
     find_recent_signal_by_dedupe_key,
 )
+from services.slack_routing import resolve_slack_route
 
 
 class SignalInput(BaseModel):
@@ -90,6 +91,11 @@ def record_signal(signal_input: SignalInput) -> dict[str, Signal | AttentionItem
 
     attention_item = None
     if bucket in {"notify", "approval_required"}:
+        slack_channel_id, slack_thread_ts = resolve_slack_route(
+            task_id=signal.task_id,
+            explicit_channel_id=signal_input.slack_channel_id,
+            explicit_thread_ts=signal_input.slack_thread_ts,
+        )
         attention_item = create_attention_item(
             signal_id=signal.id,
             task_id=signal.task_id,
@@ -99,8 +105,8 @@ def record_signal(signal_input: SignalInput) -> dict[str, Signal | AttentionItem
             headline=signal.summary,
             recommended_action=signal_input.recommended_action
             or _default_recommended_action(bucket, signal.summary),
-            slack_channel_id=signal_input.slack_channel_id,
-            slack_thread_ts=signal_input.slack_thread_ts,
+            slack_channel_id=slack_channel_id,
+            slack_thread_ts=slack_thread_ts,
         )
 
     return {"signal": signal, "attention_item": attention_item, "deduped": False}

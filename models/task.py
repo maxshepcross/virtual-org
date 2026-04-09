@@ -314,6 +314,28 @@ def get_active_tasks() -> list[Task]:
         conn.close()
 
 
+def update_task_slack_route(task_id: int, *, slack_channel_id: str, slack_thread_ts: str) -> Task | None:
+    """Store the Slack route for a task so later messages can reuse the same thread."""
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                UPDATE tasks
+                SET slack_channel_id = %s,
+                    slack_thread_ts = %s
+                WHERE id = %s
+                RETURNING *
+                """,
+                (slack_channel_id, slack_thread_ts, task_id),
+            )
+            conn.commit()
+            row = cur.fetchone()
+            return _row_to_task(row) if row else None
+    finally:
+        conn.close()
+
+
 def complete_manual_verification(
     task_id: int,
     story_id: str | None = None,
