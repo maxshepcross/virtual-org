@@ -6,16 +6,40 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from api.app import app
 from models.control_plane import AgentRun, ApprovalRequest, AttentionItem, Briefing, Signal
 from models.task import Task
 
 
 class ApiTests(unittest.TestCase):
+    _IMPORTED_ENV_KEYS = (
+        "CONTROL_API_TOKEN",
+        "GITHUB_TOKEN",
+        "IMPLEMENT_TIMEOUT_SECONDS",
+        "LEASE_SECONDS",
+    )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        env_before_import = {key: os.environ.get(key) for key in cls._IMPORTED_ENV_KEYS}
+
+        from api.app import app
+
+        cls.app = app
+        cls._restore_environment(env_before_import)
+
+    @classmethod
+    def _restore_environment(cls, snapshot: dict[str, str | None]) -> None:
+        for key in cls._IMPORTED_ENV_KEYS:
+            value = snapshot.get(key)
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
     def setUp(self) -> None:
         self.env_patcher = patch.dict(os.environ, {"CONTROL_API_TOKEN": "test-token"}, clear=False)
         self.env_patcher.start()
-        self.client = TestClient(app)
+        self.client = TestClient(self.app)
         self.headers = {"Authorization": "Bearer test-token"}
 
     def tearDown(self) -> None:
@@ -195,7 +219,7 @@ class ApiTests(unittest.TestCase):
 
     @patch("api.app.resolve_approval")
     def test_resolve_approval_returns_forbidden_for_untrusted_users(self, resolve_approval) -> None:
-        resolve_approval.side_effect = PermissionError("Slack user is not allowed to approve actions.")
+        resolve_approval.side_effect = PermissionError("Approval resolution must come from the verified Slack approval flow.")
 
         response = self.client.post(
             "/v1/approvals/12/resolve",
@@ -207,6 +231,10 @@ class ApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()["detail"],
+            "Approval resolution must come from the verified Slack approval flow.",
+        )
 
     @patch("api.app.create_approval")
     def test_create_approval_endpoint_returns_record(self, create_approval) -> None:

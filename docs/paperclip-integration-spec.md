@@ -107,8 +107,6 @@ These control-plane endpoints already exist and are enough to build the first re
   - Continue a task after a human has checked the blocked story.
 - `POST /v1/tasks/{task_id}/requeue`
   - Requeue a blocked or failed task for another worker pass.
-- `POST /v1/approvals/{approval_id}/resolve`
-  - Approve or deny a risky action.
 - `POST /v1/agent-runs`
   - Create a durable run record.
 - `PATCH /v1/agent-runs/{run_id}`
@@ -118,7 +116,7 @@ These control-plane endpoints already exist and are enough to build the first re
 
 ## API Gaps To Close
 
-Paperclip now has the main control-room endpoints it needs. The remaining gaps are about polish, live updates, and worker visibility rather than basic operability.
+Paperclip now has the main control-room endpoints it needs. The remaining gaps are about polish, live updates, worker visibility, and a future Slack-verified approval handoff rather than basic operability.
 
 ### Nice To Have Next
 

@@ -519,6 +519,7 @@ def complete_manual_verification(
                 }
             )
 
+            is_task_complete = next_story is None
             event_message = (
                 f"Manual verification completed for {target_story.get('id')}: "
                 f"{target_story.get('title')}"
@@ -526,7 +527,7 @@ def complete_manual_verification(
             cur.execute(
                 """
                 UPDATE tasks
-                SET status = 'queued',
+                SET status = %s,
                     worker_id = NULL,
                     lease_token = NULL,
                     lease_expires_at = NULL,
@@ -535,18 +536,24 @@ def complete_manual_verification(
                     progress_notes_json = %s,
                     verification_json = %s,
                     current_story_id = %s,
+                    finished_at = CASE
+                        WHEN %s = 'done' THEN NOW()
+                        ELSE finished_at
+                    END,
                     events = events || %s::jsonb
                 WHERE id = %s
                 RETURNING *
                 """,
                 (
+                    "done" if is_task_complete else "queued",
                     json.dumps(stories),
                     json.dumps(progress_notes),
                     json.dumps(verification),
                     next_story.get("id") if next_story else None,
+                    "done" if is_task_complete else "queued",
                     json.dumps(
                         {
-                            "type": "queued",
+                            "type": "completed" if is_task_complete else "queued",
                             "at": datetime.now(timezone.utc).isoformat(),
                             "message": event_message,
                         }

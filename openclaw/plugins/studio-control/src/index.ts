@@ -166,29 +166,6 @@ export default definePluginEntry({
     } as any);
 
     apiAny.registerTool({
-      name: "studio_resolve_approval",
-      description: "Approves or denies an approval request on behalf of a trusted Slack user.",
-      parameters: Type.Object({
-        approvalId: Type.Number(),
-        slackUserId: Type.String({ minLength: 1 }),
-        resolution: Type.Union([Type.Literal("approved"), Type.Literal("denied")]),
-        note: Type.Optional(Type.String()),
-      }),
-      async execute(_toolCallId: string, params: Record<string, unknown>) {
-        const client = getClient();
-        const approvalId = Number(params?.approvalId);
-        const payload = await client.post(`/v1/approvals/${approvalId}/resolve`, {
-          slack_user_id: params?.slackUserId,
-          resolution: params?.resolution,
-          note: params?.note,
-        });
-        return {
-          content: [{ type: "text", text: asText(payload) }],
-        };
-      },
-    } as any);
-
-    apiAny.registerTool({
       name: "studio_create_signal",
       description: "Creates a routed control-plane signal and attention item when needed.",
       parameters: Type.Object({

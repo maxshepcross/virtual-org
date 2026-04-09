@@ -1,9 +1,20 @@
 """Regression tests for research prompt building and result normalization."""
 
+import os
 import unittest
 from unittest.mock import patch
 
 from models.task import Task
+
+_IMPORTED_ENV_KEYS = (
+    "CONTROL_API_TOKEN",
+    "DATABASE_URL",
+    "GITHUB_TOKEN",
+    "IMPLEMENT_TIMEOUT_SECONDS",
+    "LEASE_SECONDS",
+)
+_ENV_BEFORE_RESEARCH_IMPORT = {key: os.environ.get(key) for key in _IMPORTED_ENV_KEYS}
+
 from research import (
     RESEARCH_PROMPT,
     _build_research_prompt,
@@ -11,6 +22,12 @@ from research import (
     _normalize_research_result,
     _normalize_task_breakdown_result,
 )
+
+for _key, _value in _ENV_BEFORE_RESEARCH_IMPORT.items():
+    if _value is None:
+        os.environ.pop(_key, None)
+    else:
+        os.environ[_key] = _value
 
 
 class ResearchPromptValueTests(unittest.TestCase):

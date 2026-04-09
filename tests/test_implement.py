@@ -1,9 +1,19 @@
 """Regression tests for implementation prompt shaping and story flow helpers."""
 
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+
+_IMPORTED_ENV_KEYS = (
+    "CONTROL_API_TOKEN",
+    "DATABASE_URL",
+    "GITHUB_TOKEN",
+    "IMPLEMENT_TIMEOUT_SECONDS",
+    "LEASE_SECONDS",
+)
+_ENV_BEFORE_IMPLEMENT_IMPORT = {key: os.environ.get(key) for key in _IMPORTED_ENV_KEYS}
 
 from implement import (
     _all_stories_completed,
@@ -20,6 +30,12 @@ from implement import (
 )
 from models.control_plane import AgentRun
 from models.task import Task
+
+for _key, _value in _ENV_BEFORE_IMPLEMENT_IMPORT.items():
+    if _value is None:
+        os.environ.pop(_key, None)
+    else:
+        os.environ[_key] = _value
 
 
 class ImplementTimeoutTests(unittest.TestCase):

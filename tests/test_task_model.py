@@ -76,6 +76,44 @@ class TaskModelJsonFieldTests(unittest.TestCase):
         self.assertEqual(task.status, "queued")
         self.assertEqual(task.current_story_id, "STORY-2")
 
+    @patch("models.task._conn")
+    def test_complete_manual_verification_finishes_task_when_no_pending_story_remains(self, conn_factory) -> None:
+        conn = conn_factory.return_value
+        cursor = conn.cursor.return_value.__enter__.return_value
+        cursor.fetchone.side_effect = [
+            {
+                "id": 8,
+                "title": "Review final story",
+                "description": "Wait for human check",
+                "category": "ops",
+                "status": "implementing",
+                "execution_stories_json": [
+                    {"id": "STORY-9", "title": "Final check", "priority": 1, "status": "awaiting_manual_verification"},
+                ],
+                "progress_notes_json": [],
+                "verification_json": [],
+                "events": [],
+            },
+            {
+                "id": 8,
+                "title": "Review final story",
+                "description": "Wait for human check",
+                "category": "ops",
+                "status": "done",
+                "execution_stories_json": '[{"id":"STORY-9","title":"Final check","priority":1,"status":"completed"}]',
+                "progress_notes_json": '[{"message":"Checked final story"}]',
+                "verification_json": '[{"story_id":"STORY-9"}]',
+                "current_story_id": None,
+                "events": "[]",
+            },
+        ]
+
+        task = complete_manual_verification(8, note="Checked final story")
+
+        self.assertEqual(task.execution_stories_json[0]["status"], "completed")
+        self.assertEqual(task.status, "done")
+        self.assertIsNone(task.current_story_id)
+
 
 if __name__ == "__main__":
     unittest.main()
