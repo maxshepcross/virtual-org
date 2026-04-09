@@ -1,13 +1,16 @@
 """Regression tests for implementation prompt shaping and story flow helpers."""
 
 import unittest
+from pathlib import Path
 
 from implement import (
     _all_stories_completed,
+    _build_claude_command,
     _build_claude_prompt,
     _fallback_story_from_research,
     _find_manual_review_story,
     _format_timeout,
+    _looks_like_permission_error,
     _select_next_story,
     _verification_failed,
     _verification_requires_manual_review,
@@ -54,6 +57,17 @@ class ImplementTimeoutTests(unittest.TestCase):
         self.assertIn("Shape research output", prompt)
         self.assertIn("Verify: Run unit tests", prompt)
         self.assertIn("File: research.py", prompt)
+
+    def test_claude_command_uses_safer_permission_mode(self) -> None:
+        command = _build_claude_command("Ship the selected story", Path("/tmp/example"))
+
+        self.assertIn("--permission-mode", command)
+        self.assertIn("acceptEdits", command)
+        self.assertNotIn("--dangerously-skip-permissions", command)
+
+    def test_permission_error_detection_handles_common_messages(self) -> None:
+        self.assertTrue(_looks_like_permission_error("Permission denied for Bash tool"))
+        self.assertFalse(_looks_like_permission_error("Process exited with code 1"))
 
     def test_select_next_story_prefers_in_progress_then_pending(self) -> None:
         story = _select_next_story(

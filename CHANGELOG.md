@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.8 - 2026-04-09
+
+### Added
+
+- Added a worker loop and CLI so queued tasks can now move forward automatically instead of waiting for a human to kick each step.
+- Added a chief-to-worker trigger so the OpenClaw chief can start one safe background worker pass without blocking the conversation.
+- Added agent-run tracking for worker phases so the control plane can record who is working on what and when it last checked in.
+
+### Changed
+
+- Changed research so rough requests are shaped into a brief and a small task breakdown before the final implementation plan is produced.
+- Updated the README and chief workspace instructions so local worker runs and chief-triggered worker passes are documented alongside the control API and Slack services.
+
+### Fixed
+
+- Fixed implementation handoffs so tasks are released back to the queue, to approval, or to manual verification cleanly instead of getting stuck on a worker lease.
+- Fixed delivery safety so chief-triggered runs now respect the server-side push approval rule before code is delivered.
+- Fixed the worker trigger endpoint so it starts in the background and returns immediately, keeping the chief responsive.
+
 ## 0.1.7 - 2026-04-09
 
 - Fixed `scripts/run_api.py` so it can start cleanly on a server without the `PYTHONPATH=...` workaround.

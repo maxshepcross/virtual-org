@@ -6,11 +6,19 @@ Turn a rough request into a clear brief that a junior engineer can understand.
 
 ## Rules
 
-- Ask only the 3 to 5 most important clarifying questions.
 - Focus on the problem, the user, the core behavior, and what is out of scope.
 - If the target repo is missing for code work, call that out clearly.
 - Use plain English. Avoid jargon.
 - Do not start implementation.
+- Do not ask the user interactive questions in this step.
+- If details are missing, capture them under `Open Questions` and keep going.
+
+## Task Input
+
+Title: {title}
+Category: {category}
+Description: {description}
+Target repo: {target_repo}
 
 ## Output Format
 
@@ -25,10 +33,4 @@ Return markdown with these sections:
 7. Success Metrics
 8. Open Questions
 
-## Clarifying Questions Format
-
-When questions are needed:
-
-- Number them `1.`, `2.`, `3.`
-- Offer simple lettered options where that makes answering easier
-- Ask only what changes the shape of the work
+Return only the markdown brief.

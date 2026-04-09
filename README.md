@@ -79,7 +79,7 @@ On a Linux server, use the included `systemd` service file. `systemd` is the bui
 
 Service template:
 
-- [deploy/systemd/virtual-org-control-api.service](/Users/maxshepherd-cross/conductor/workspaces/virtual-org/washington-v1/deploy/systemd/virtual-org-control-api.service)
+- [deploy/systemd/virtual-org-control-api.service](deploy/systemd/virtual-org-control-api.service)
 
 Typical install steps on the server:
 
@@ -103,7 +103,7 @@ Founder-facing Slack delivery now uses a small dispatcher service. It checks for
 
 Service template:
 
-- [deploy/systemd/virtual-org-slack-dispatcher.service](/Users/maxshepherd-cross/conductor/workspaces/virtual-org/washington-v1/deploy/systemd/virtual-org-slack-dispatcher.service)
+- [deploy/systemd/virtual-org-slack-dispatcher.service](deploy/systemd/virtual-org-slack-dispatcher.service)
 
 Typical install steps on the server:
 
@@ -122,7 +122,48 @@ journalctl -u virtual-org-slack-dispatcher -f
 
 For the full production checklist, restart commands, smoke tests, and common recovery steps, use:
 
-- [docs/production-runbook.md](/Users/maxshepherd-cross/conductor/workspaces/virtual-org/washington-v1/docs/production-runbook.md)
+- [docs/production-runbook.md](docs/production-runbook.md)
+
+## Run The Worker
+
+The worker is the small loop that moves queued tasks forward. Think of it like a clerk who picks the next item off the desk, works it one step forward, then comes back for the next one.
+
+Process one available task and exit:
+
+```bash
+.venv/bin/python3 scripts/run_worker.py --once
+```
+
+Keep polling for more queued tasks:
+
+```bash
+.venv/bin/python3 scripts/run_worker.py --worker-id local-worker
+```
+
+Stop after a fixed number of claimed tasks:
+
+```bash
+.venv/bin/python3 scripts/run_worker.py --max-tasks 5
+```
+
+Important:
+
+- The worker only touches tasks already stored in Postgres.
+- It uses the same research and implementation pipeline as the rest of this repo.
+- If a story needs manual verification, it stops and releases the task back into a waiting state.
+
+## OpenClaw Chief Integration
+
+The OpenClaw chief can now ask the control plane to advance one worker pass through the `studio_run_worker_once` tool exposed by the plugin in `openclaw/plugins/studio-control/`.
+
+That trigger is asynchronous, which means it starts the work and returns immediately instead of holding the chief open until the whole pass finishes.
+
+That means the chief can:
+
+- check attention items
+- check approvals
+- trigger one safe worker pass
+- report back only what changed
 
 If a story is blocked on manual review, mark it complete with:
 

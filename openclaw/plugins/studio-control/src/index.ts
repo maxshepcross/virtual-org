@@ -45,7 +45,7 @@ export default definePluginEntry({
   id: "studio-control",
   name: "Studio Control",
   description: "Bridges OpenClaw to the AI Venture Studio control API.",
-  register(api) {
+  register(api: any) {
     const apiAny = api as any;
     const getClient = () => createControlApiClient(apiAny.pluginConfig);
 
@@ -117,6 +117,23 @@ export default definePluginEntry({
           summary: params?.summary,
           task_id: params?.task_id,
           venture: params?.venture,
+        });
+        return {
+          content: [{ type: "text", text: asText(payload) }],
+        };
+      },
+    } as any);
+
+    apiAny.registerTool({
+      name: "studio_run_worker_once",
+      description: "Ask the control plane to advance one queued task by one worker pass.",
+      parameters: Type.Object({
+        workerId: Type.Optional(Type.String()),
+      }),
+      async execute(_toolCallId: string, params: Record<string, unknown>) {
+        const client = getClient();
+        const payload = await client.post("/v1/worker/run-once", {
+          worker_id: params?.workerId,
         });
         return {
           content: [{ type: "text", text: asText(payload) }],

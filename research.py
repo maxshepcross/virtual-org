@@ -14,6 +14,7 @@ import anthropic
 from config.constants import RESEARCH_MODEL, MAX_RESEARCH_TOKENS, ALLOWED_REPOS
 from config.env import load_project_env
 from models.task import Task, update_task_status
+from services.planning_service import build_planning_context, merge_planning_context
 
 load_project_env()
 logger = logging.getLogger(__name__)
@@ -105,19 +106,65 @@ def _normalize_research_result(result: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _build_research_prompt(task: Task, codebase_context: str = "") -> str:
+def _normalize_task_breakdown_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Normalize planning output into the same story shape used downstream."""
+    normalized = {
+        "summary": str((result or {}).get("summary") or ""),
+        "execution_stories": [],
+    }
+    raw_stories = (result or {}).get("execution_stories")
+    if not isinstance(raw_stories, list):
+        raw_stories = []
+    normalized["execution_stories"] = [
+        _normalize_execution_story(index, story)
+        for index, story in enumerate(raw_stories)
+    ]
+    return normalized
+
+
+def _extract_structured_block(text: str) -> str:
+    """Extract the first fenced block when a model wraps structured output."""
+    cleaned = text.strip()
+    if "```json" in cleaned:
+        return cleaned.split("```json", 1)[1].split("```", 1)[0].strip()
+    if cleaned.startswith("```") and "```" in cleaned[3:]:
+        return cleaned.split("```", 1)[1].split("```", 1)[0].strip()
+    return cleaned
+
+
+def _build_research_prompt(
+    task: Task,
+    codebase_context: str = "",
+    *,
+    prd_markdown: str = "",
+    task_breakdown: dict[str, Any] | None = None,
+) -> str:
     """Build the research prompt with studio policy context."""
+    task_breakdown = task_breakdown or {}
+    approach_sketch = task_breakdown.get("summary") or ""
     prompt = RESEARCH_PROMPT.replace("{title}", _coerce_prompt_value(task.title))
     prompt = prompt.replace("{category}", _coerce_prompt_value(task.category))
     prompt = prompt.replace("{description}", _coerce_prompt_value(task.description))
     prompt = prompt.replace("{target_repo}", _coerce_prompt_value(task.target_repo or "N/A"))
-    prompt = prompt.replace("{approach_sketch}", _coerce_prompt_value("") or "None provided")
+    prompt = prompt.replace("{approach_sketch}", _coerce_prompt_value(approach_sketch) or "None provided")
     prompt = prompt.replace("{priority_map}", _load_prompt_context("studio-priority-map.md"))
     prompt = prompt.replace(
         "{auto_resolution_policy}",
         _load_prompt_context("studio-auto-resolution.md"),
     )
     prompt = prompt.replace("{heartbeat}", _load_prompt_context("studio-heartbeat.md"))
+
+    if prd_markdown:
+        prompt += f"\n\n## Draft PRD\n\n{prd_markdown.strip()}"
+
+    if task_breakdown:
+        summary = task_breakdown.get("summary", "")
+        stories = task_breakdown.get("execution_stories", [])
+        prompt += (
+            "\n\n## Story Breakdown\n\n"
+            f"Summary: {summary or 'Not provided'}\n"
+            f"Stories:\n{json.dumps(stories, indent=2)}"
+        )
 
     if codebase_context:
         prompt += f"\n\n## Codebase search results\n\n{codebase_context}"
@@ -186,21 +233,25 @@ def run_research(task: Task) -> dict:
             logger.warning("Could not search codebase: %s", e)
             codebase_context = f"Codebase search unavailable: {e}"
 
-    prompt = _build_research_prompt(task, codebase_context)
-
+    planning_context = build_planning_context(task, client)
+    if planning_context.get("task_breakdown"):
+        planning_context["task_breakdown"] = _normalize_task_breakdown_result(
+            planning_context["task_breakdown"]
+        )
+    prompt = _build_research_prompt(
+        task,
+        codebase_context,
+        prd_markdown=planning_context.get("prd_markdown", ""),
+        task_breakdown=planning_context.get("task_breakdown"),
+    )
     response = client.messages.create(
         model=RESEARCH_MODEL,
         max_tokens=MAX_RESEARCH_TOKENS,
         messages=[{"role": "user", "content": prompt}],
     )
-
-    text = response.content[0].text
-    if "```json" in text:
-        text = text.split("```json")[1].split("```")[0]
-    elif "```" in text:
-        text = text.split("```")[1].split("```")[0]
-
-    result = _normalize_research_result(json.loads(text.strip()))
+    research_text = response.content[0].text
+    result = _normalize_research_result(json.loads(_extract_structured_block(research_text)))
+    result = merge_planning_context(result, planning_context)
 
     if task.id is not None and task.lease_token:
         first_story = result.get("execution_stories", [])

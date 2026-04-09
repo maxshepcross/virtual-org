@@ -61,7 +61,7 @@ class TaskModelJsonFieldTests(unittest.TestCase):
                 "title": "Review story",
                 "description": "Wait for human check",
                 "category": "ops",
-                "status": "implementing",
+                "status": "queued",
                 "execution_stories_json": '[{"id":"STORY-1","title":"Ship fix","priority":1,"status":"completed"},{"id":"STORY-2","title":"Next step","priority":2,"status":"pending"}]',
                 "progress_notes_json": '[{"message":"Checked in browser"}]',
                 "verification_json": '[{"story_id":"STORY-1"}]',
@@ -73,6 +73,7 @@ class TaskModelJsonFieldTests(unittest.TestCase):
         task = complete_manual_verification(7, note="Checked in browser")
 
         self.assertEqual(task.execution_stories_json[0]["status"], "completed")
+        self.assertEqual(task.status, "queued")
         self.assertEqual(task.current_story_id, "STORY-2")
 
 
