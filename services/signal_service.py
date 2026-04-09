@@ -27,6 +27,7 @@ class SignalInput(BaseModel):
     summary: str
     details_json: dict[str, Any] | None = None
     dedupe_key: str | None = None
+    freshness_seconds: int | None = None
     recommended_action: str | None = None
     slack_channel_id: str | None = None
     slack_thread_ts: str | None = None
@@ -73,7 +74,10 @@ def _default_recommended_action(bucket: str, summary: str) -> str:
 
 def record_signal(signal_input: SignalInput) -> dict[str, Signal | AttentionItem | None]:
     dedupe_key = signal_input.dedupe_key or build_dedupe_key(signal_input)
-    existing = find_recent_signal_by_dedupe_key(dedupe_key)
+    existing = find_recent_signal_by_dedupe_key(
+        dedupe_key,
+        freshness_seconds=signal_input.freshness_seconds or 300,
+    )
     if existing:
         return {"signal": existing, "attention_item": None, "deduped": True}
 
@@ -92,12 +96,15 @@ def record_signal(signal_input: SignalInput) -> dict[str, Signal | AttentionItem
     )
 
     attention_item = None
-    if bucket in {"notify", "approval_required"}:
-        slack_channel_id, slack_thread_ts = resolve_slack_route(
-            task_id=signal.task_id,
-            explicit_channel_id=signal_input.slack_channel_id,
-            explicit_thread_ts=signal_input.slack_thread_ts,
-        )
+    if bucket in {"notify", "approval_required", "digest"}:
+        slack_channel_id = None
+        slack_thread_ts = None
+        if bucket in {"notify", "approval_required"}:
+            slack_channel_id, slack_thread_ts = resolve_slack_route(
+                task_id=signal.task_id,
+                explicit_channel_id=signal_input.slack_channel_id,
+                explicit_thread_ts=signal_input.slack_thread_ts,
+            )
         attention_item = create_attention_item(
             signal_id=signal.id,
             task_id=signal.task_id,

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.0 - 2026-04-09
+
+### Added
+
+- Added a broader Studio control API so OpenClaw and Paperclip can list tasks and runs, create work, resolve approvals, requeue blocked work, complete manual checks, and read recent briefings.
+- Added a business-signal importance layer so outside systems can send filtered revenue, usage, and customer-health updates into the control plane without dumping raw source data on the founder bot.
+- Added richer Studio chief guidance files so the Slack chief has a clear founder-facing operating model, priority map, and auto-resolution rules.
+
+### Changed
+
+- Changed the OpenClaw Studio plugin so it exposes the new control-plane tools instead of forcing the chief to guess or rely on manual scripts.
+- Changed the Paperclip integration spec to reflect the control-room endpoints that now exist and the smaller set of gaps still worth building.
+- Changed signal deduping and attention queries so venture-wide business signals stay visible for the right company without repeatedly re-alerting on the same sync output.
+
+### Fixed
+
+- Fixed task dashboards so blocked tasks can be requeued safely and manual verification can be completed through the API instead of one-off scripts.
+- Fixed founder briefing memory so the chief can look back at recent briefings before sending another summary.
+
 ## 0.1.9 - 2026-04-09
 
 ### Added

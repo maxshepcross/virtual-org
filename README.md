@@ -123,6 +123,7 @@ journalctl -u virtual-org-slack-dispatcher -f
 For the full production checklist, restart commands, smoke tests, and common recovery steps, use:
 
 - [docs/production-runbook.md](docs/production-runbook.md)
+- [docs/paperclip-integration-spec.md](docs/paperclip-integration-spec.md) for the boundary between this control plane and the Paperclip UI
 
 ## Run The Worker
 

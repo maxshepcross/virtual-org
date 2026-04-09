@@ -387,6 +387,47 @@ def get_active_tasks() -> list[Task]:
         conn.close()
 
 
+def list_tasks(
+    *,
+    limit: int = 50,
+    status: str | None = None,
+    venture: str | None = None,
+    requested_by: str | None = None,
+) -> list[Task]:
+    """List tasks for dashboard views with a small set of common filters."""
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            where_parts: list[str] = []
+            params: list[Any] = []
+
+            if status:
+                where_parts.append("status = %s")
+                params.append(status)
+            if venture:
+                where_parts.append("venture = %s")
+                params.append(venture)
+            if requested_by:
+                where_parts.append("requested_by = %s")
+                params.append(requested_by)
+
+            where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+            params.append(limit)
+            cur.execute(
+                f"""
+                SELECT *
+                FROM tasks
+                {where_clause}
+                ORDER BY COALESCE(last_heartbeat_at, finished_at, started_at, created_at) DESC, id DESC
+                LIMIT %s
+                """,
+                params,
+            )
+            return [_row_to_task(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
 def update_task_slack_route(task_id: int, *, slack_channel_id: str, slack_thread_ts: str) -> Task | None:
     """Store the Slack route for a task so later messages can reuse the same thread."""
     conn = _conn()
@@ -503,6 +544,64 @@ def complete_manual_verification(
                     json.dumps(progress_notes),
                     json.dumps(verification),
                     next_story.get("id") if next_story else None,
+                    json.dumps(
+                        {
+                            "type": "queued",
+                            "at": datetime.now(timezone.utc).isoformat(),
+                            "message": event_message,
+                        }
+                    ),
+                    task_id,
+                ),
+            )
+            conn.commit()
+            return _row_to_task(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def requeue_task(task_id: int, *, note: str = "") -> Task:
+    """Requeue a blocked or failed task so a worker can pick it up again."""
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM tasks WHERE id = %s FOR UPDATE", (task_id,))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Task {task_id} not found")
+
+            task = _row_to_task(row)
+            if task.status not in {"blocked", "failed"}:
+                raise ValueError(f"Task {task_id} is not blocked or failed.")
+            if task.approval_state == "pending":
+                raise ValueError("Task is still waiting on approval. Resolve the approval instead of requeueing.")
+            if any(
+                story.get("status") == "awaiting_manual_verification"
+                for story in (task.execution_stories_json or [])
+                if isinstance(story, dict)
+            ):
+                raise ValueError("Task is waiting on manual verification. Complete verification instead of requeueing.")
+
+            event_message = note.strip() or "Task requeued for another worker pass."
+            cur.execute(
+                """
+                UPDATE tasks
+                SET status = 'queued',
+                    worker_id = NULL,
+                    lease_token = NULL,
+                    lease_expires_at = NULL,
+                    last_heartbeat_at = NULL,
+                    finished_at = NULL,
+                    error_message = NULL,
+                    approval_state = CASE
+                        WHEN approval_state = 'approved' THEN 'approved'
+                        ELSE NULL
+                    END,
+                    events = events || %s::jsonb
+                WHERE id = %s
+                RETURNING *
+                """,
+                (
                     json.dumps(
                         {
                             "type": "queued",

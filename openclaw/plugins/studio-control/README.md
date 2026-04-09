@@ -35,9 +35,18 @@ Add the plugin to your OpenClaw gateway config and pass:
 ## Tools exposed
 
 - `studio_attention`
+- `studio_tasks`
 - `studio_task_state`
+- `studio_create_task`
 - `studio_pending_approvals`
+- `studio_resolve_approval`
 - `studio_create_signal`
+- `studio_complete_manual_verification`
+- `studio_requeue_task`
+- `studio_agent_runs`
+- `studio_recent_briefings`
+- `studio_generate_briefing`
+- `studio_run_worker_once`
 
 ## Hook behavior
 
