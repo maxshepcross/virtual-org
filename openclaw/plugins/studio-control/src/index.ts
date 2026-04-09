@@ -124,6 +124,23 @@ export default definePluginEntry({
       },
     } as any);
 
+    apiAny.registerTool({
+      name: "studio_run_worker_once",
+      description: "Ask the control plane to advance one queued task by one worker pass.",
+      parameters: Type.Object({
+        workerId: Type.Optional(Type.String()),
+      }),
+      async execute(_toolCallId: string, params: Record<string, unknown>) {
+        const client = getClient();
+        const payload = await client.post("/v1/worker/run-once", {
+          worker_id: params?.workerId,
+        });
+        return {
+          content: [{ type: "text", text: asText(payload) }],
+        };
+      },
+    } as any);
+
     apiAny.registerHook(
       "before_tool_call",
       async (event: any) => {

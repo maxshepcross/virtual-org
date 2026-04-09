@@ -13,8 +13,10 @@ from typing import Any
 
 from config.constants import ALLOWED_REPOS, IMPLEMENT_MODEL, IMPLEMENT_TIMEOUT_SECONDS
 from config.env import load_project_env
-from models.task import Task, update_task_status
+from models.task import Task, release_task, update_task_status
 from services.github_ops import ensure_branch, commit_and_push, open_pr
+from services.policy_engine import PolicyEvaluationRequest
+from services.policy_service import evaluate_and_record_policy
 
 load_project_env()
 logger = logging.getLogger(__name__)
@@ -192,6 +194,60 @@ def _persist_task_progress(task: Task, status: str, event_message: str, **fields
     if task.id is None or not task.lease_token:
         return
     update_task_status(task.id, task.lease_token, status, event_message=event_message, **fields)
+
+
+def _release_task_progress(task: Task, status: str, event_message: str, **fields: Any) -> None:
+    """Release a leased task into a waiting state so the loop can resume it later."""
+    if task.id is None or not task.lease_token:
+        return
+    release_task(task.id, task.lease_token, status, event_message=event_message, **fields)
+
+
+def _evaluate_delivery_policy(task: Task) -> tuple[str, str]:
+    """Check whether this task is approved to make a deliverable repo change."""
+    if task.approval_state == "approved":
+        return "allow", "Delivery approval already granted."
+    if task.id is None:
+        return "block", "Delivery actions must be attached to a tracked task."
+
+    result = evaluate_and_record_policy(
+        PolicyEvaluationRequest(
+            task_id=task.id,
+            story_id=task.current_story_id,
+            agent_role="implementer",
+            action_type="git_push",
+            target_repo=task.target_repo,
+            reason="Apply and deliver the selected execution story.",
+        )
+    )
+    return result.decision, result.reason
+
+
+def _build_claude_command(prompt: str, repo_dir: Path) -> list[str]:
+    """Build a safer non-interactive Claude Code command."""
+    return [
+        "claude",
+        "--print",
+        "--permission-mode",
+        "acceptEdits",
+        "--add-dir",
+        str(repo_dir),
+        "-p",
+        prompt,
+    ]
+
+
+def _looks_like_permission_error(stderr_text: str) -> bool:
+    """Detect a likely Claude permission refusal from stderr."""
+    lowered = stderr_text.lower()
+    keywords = (
+        "permission",
+        "approval",
+        "not allowed",
+        "disallowed",
+        "blocked",
+    )
+    return any(keyword in lowered for keyword in keywords)
 
 
 def _open_pr_for_completed_stories(
@@ -455,6 +511,49 @@ def run_implementation(task: Task, research: dict) -> dict:
     progress_notes = deepcopy(task.progress_notes_json or [])
     verification_log = deepcopy(task.verification_json or [])
 
+    delivery_decision, delivery_reason = _evaluate_delivery_policy(task)
+    if delivery_decision == "require_approval":
+        _release_task_progress(
+            task,
+            "awaiting_approval",
+            delivery_reason,
+            execution_stories_json=execution_stories,
+            progress_notes_json=progress_notes,
+            verification_json=verification_log,
+            current_story_id=selected_story.get("id"),
+            branch_name=task.branch_name,
+            approval_state="pending",
+            error_message=delivery_reason,
+        )
+        return {
+            "branch_name": task.branch_name,
+            "execution_stories_json": execution_stories,
+            "progress_notes_json": progress_notes,
+            "verification_json": verification_log,
+            "current_story_id": selected_story.get("id"),
+            "error": delivery_reason,
+        }
+    if delivery_decision == "block":
+        _release_task_progress(
+            task,
+            "blocked",
+            delivery_reason,
+            execution_stories_json=execution_stories,
+            progress_notes_json=progress_notes,
+            verification_json=verification_log,
+            current_story_id=selected_story.get("id"),
+            branch_name=task.branch_name,
+            error_message=delivery_reason,
+        )
+        return {
+            "branch_name": task.branch_name,
+            "execution_stories_json": execution_stories,
+            "progress_notes_json": progress_notes,
+            "verification_json": verification_log,
+            "current_story_id": selected_story.get("id"),
+            "error": delivery_reason,
+        }
+
     # Reuse existing branch for later stories, or create a fresh one for the first story.
     branch = ensure_branch(repo_dir, task.id or 0, task.title, task.branch_name)
     logger.info("Using branch: %s", branch)
@@ -476,12 +575,7 @@ def run_implementation(task: Task, research: dict) -> dict:
     # Run Claude Code as a subprocess
     try:
         result = subprocess.run(
-            [
-                "claude",
-                "--print",
-                "--dangerously-skip-permissions",
-                "-p", prompt,
-            ],
+            _build_claude_command(prompt, repo_dir),
             cwd=repo_dir,
             capture_output=True,
             text=True,
@@ -499,6 +593,27 @@ def run_implementation(task: Task, research: dict) -> dict:
                 )
             )
             logger.error("Claude Code failed: %s", result.stderr[:500])
+            permission_error = _looks_like_permission_error(result.stderr or "")
+            if permission_error:
+                _release_task_progress(
+                    task,
+                    "blocked",
+                    f"Claude Code stopped because extra permissions were required during {selected_story.get('id')}.",
+                    execution_stories_json=execution_stories,
+                    progress_notes_json=progress_notes,
+                    verification_json=verification_log,
+                    current_story_id=selected_story.get("id"),
+                    branch_name=branch,
+                    error_message="Claude Code stopped because extra permissions were required.",
+                )
+                return {
+                    "branch_name": branch,
+                    "execution_stories_json": execution_stories,
+                    "progress_notes_json": progress_notes,
+                    "verification_json": verification_log,
+                    "current_story_id": selected_story.get("id"),
+                    "error": "Claude Code stopped because extra permissions were required.",
+                }
             _persist_task_progress(
                 task,
                 "failed",
@@ -639,9 +754,9 @@ def run_implementation(task: Task, research: dict) -> dict:
                 "Automated work is complete, but manual verification is still required.",
             )
         )
-        _persist_task_progress(
+        _release_task_progress(
             task,
-            "implementing",
+            "blocked",
             f"Waiting for manual verification on {selected_story.get('id')}.",
             execution_stories_json=execution_stories,
             progress_notes_json=progress_notes,
@@ -671,10 +786,10 @@ def run_implementation(task: Task, research: dict) -> dict:
 
     next_story = _select_next_story(execution_stories)
     if next_story:
-        _persist_task_progress(
+        _release_task_progress(
             task,
-            "implementing",
-            f"Completed {selected_story.get('id')}; queued {next_story.get('id')} next.",
+            "queued",
+            f"Completed {selected_story.get('id')}; released {next_story.get('id')} for the next worker pass.",
             execution_stories_json=execution_stories,
             progress_notes_json=progress_notes,
             verification_json=verification_log,

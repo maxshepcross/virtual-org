@@ -230,6 +230,11 @@ def update_task_status(
                     "branch_name",
                     "error_message",
                     "current_story_id",
+                    "worker_id",
+                    "lease_token",
+                    "lease_expires_at",
+                    "last_heartbeat_at",
+                    "approval_state",
                 ):
                     set_parts.append(f"{key} = %s")
                     params.append(value)
@@ -249,6 +254,74 @@ def update_task_status(
             row = cur.fetchone()
             if not row:
                 raise ValueError(f"Status update failed: task {task_id} lease mismatch")
+            return _row_to_task(row)
+    finally:
+        conn.close()
+
+
+def release_task(
+    task_id: int,
+    lease_token: str,
+    status: str,
+    event_message: str = "",
+    **fields,
+) -> Task:
+    """Release a leased task back to the queue or a waiting state."""
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            new_event = json.dumps({
+                "type": status,
+                "at": datetime.now(timezone.utc).isoformat(),
+                "message": event_message,
+            })
+
+            set_parts = [
+                "status = %s",
+                "worker_id = NULL",
+                "lease_token = NULL",
+                "lease_expires_at = NULL",
+                "last_heartbeat_at = NOW()",
+                "events = events || %s::jsonb",
+            ]
+            params: list[Any] = [status, new_event]
+
+            for key, value in fields.items():
+                if key in (
+                    "research_json",
+                    "execution_stories_json",
+                    "implementation_json",
+                    "progress_notes_json",
+                    "verification_json",
+                ):
+                    set_parts.append(f"{key} = %s")
+                    params.append(json.dumps(value))
+                elif key in (
+                    "pr_url",
+                    "pr_number",
+                    "pr_status",
+                    "branch_name",
+                    "error_message",
+                    "current_story_id",
+                    "approval_state",
+                ):
+                    set_parts.append(f"{key} = %s")
+                    params.append(value)
+
+            params.extend([task_id, lease_token])
+            cur.execute(
+                f"""
+                UPDATE tasks
+                SET {', '.join(set_parts)}
+                WHERE id = %s AND lease_token = %s
+                RETURNING *
+                """,
+                params,
+            )
+            conn.commit()
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Task release failed: task {task_id} lease mismatch")
             return _row_to_task(row)
     finally:
         conn.close()
@@ -412,7 +485,11 @@ def complete_manual_verification(
             cur.execute(
                 """
                 UPDATE tasks
-                SET status = 'implementing',
+                SET status = 'queued',
+                    worker_id = NULL,
+                    lease_token = NULL,
+                    lease_expires_at = NULL,
+                    last_heartbeat_at = NULL,
                     execution_stories_json = %s,
                     progress_notes_json = %s,
                     verification_json = %s,
@@ -428,7 +505,7 @@ def complete_manual_verification(
                     next_story.get("id") if next_story else None,
                     json.dumps(
                         {
-                            "type": "implementing",
+                            "type": "queued",
                             "at": datetime.now(timezone.utc).isoformat(),
                             "message": event_message,
                         }

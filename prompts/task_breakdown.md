@@ -13,6 +13,17 @@ Produce a plan that an implementation agent can execute in safe, testable chunks
 - Name candidate files to read, modify, or create.
 - If the work is too vague to break down safely, say so plainly.
 
+## Task Input
+
+Title: {title}
+Category: {category}
+Description: {description}
+Target repo: {target_repo}
+
+## PRD
+
+{prd_markdown}
+
 ## Output Format
 
 Return JSON with:

@@ -29,7 +29,7 @@ DEFAULT_APPROVAL_POLICY = {
         "destructive_shell",
         "secret_access",
     ],
-    "approval_required_actions": ["git_push", "pull_request"],
+    "approval_required_actions": ["git_push"],
     "blocked_actions": ["destructive_shell", "secret_access"],
 }
 
