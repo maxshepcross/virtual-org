@@ -16,6 +16,7 @@ from models.control_plane import (
     list_unposted_attention_items,
     mark_approval_request_posted,
     mark_attention_item_posted,
+    update_agent_run,
 )
 from models.task import get_task, update_task_slack_route
 
@@ -91,6 +92,8 @@ def _format_attention_item(item: AttentionItem) -> str:
     lines = [headline]
     if item.task_id is not None:
         lines.append(f"Task: {item.task_id}")
+    if item.agent_run_id is not None:
+        lines.append(f"Run: {item.agent_run_id}")
     if item.venture:
         lines.append(f"Venture: {item.venture}")
     lines.append(f"Bucket: {item.bucket}")
@@ -103,6 +106,7 @@ def _format_approval_request(request: ApprovalRequest) -> str:
         f"[APPROVAL NEEDED] {request.action_type}",
         f"Approval ID: {request.id}",
         f"Task: {request.task_id}",
+        f"Run: {request.agent_run_id}" if request.agent_run_id is not None else "Run: not attached",
         f"Target: {request.target_summary}",
         "Review the request in the control plane and approve or deny it.",
     ]
@@ -138,6 +142,12 @@ def dispatch_once(limit: int = 25) -> dict[str, int]:
                 text=_format_attention_item(item),
             )
             mark_attention_item_posted(item.id, slack_message_ts=result.ts)
+            if item.agent_run_id is not None:
+                update_agent_run(
+                    item.agent_run_id,
+                    slack_channel_id=result.channel,
+                    slack_thread_ts=item.slack_thread_ts or result.ts,
+                )
             if result.ts and _should_claim_task_thread(item.task_id, item.slack_thread_ts):
                 update_task_slack_route(
                     item.task_id,
@@ -155,6 +165,12 @@ def dispatch_once(limit: int = 25) -> dict[str, int]:
                 text=_format_approval_request(request),
             )
             mark_approval_request_posted(request.id, slack_message_ts=result.ts)
+            if request.agent_run_id is not None:
+                update_agent_run(
+                    request.agent_run_id,
+                    slack_channel_id=result.channel,
+                    slack_thread_ts=request.requested_slack_thread_ts or result.ts,
+                )
             if result.ts and _should_claim_task_thread(request.task_id, request.requested_slack_thread_ts):
                 update_task_slack_route(
                     request.task_id,

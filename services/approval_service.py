@@ -8,10 +8,12 @@ from pydantic import BaseModel
 
 from models.control_plane import (
     ApprovalRequest,
+    append_agent_run_artifact,
     create_approval_request,
     get_approval_request,
     list_pending_approvals,
     resolve_approval_request,
+    update_agent_run,
 )
 from models.task import get_task
 from services.slack_routing import resolve_slack_route
@@ -89,6 +91,22 @@ def resolve_approval(approval_id: int, request: ApprovalResolutionRequest) -> Ap
     )
     if not resolved:
         raise ValueError(f"Approval request {approval_id} could not be resolved.")
+    if resolved.agent_run_id is not None:
+        update_agent_run(
+            resolved.agent_run_id,
+            approved_by=request.slack_user_id,
+        )
+        append_agent_run_artifact(
+            resolved.agent_run_id,
+            {
+                "type": "approval_resolution",
+                "approval_id": resolved.id,
+                "status": normalized_resolution,
+                "approved_by": request.slack_user_id,
+                "note": request.note or "",
+                "at": resolved.resolved_at.isoformat() if resolved.resolved_at else None,
+            },
+        )
     if resolved.status != normalized_resolution and resolved.status != "pending":
         return resolved
     return resolved

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -15,11 +16,26 @@ from models.task import _conn, get_task
 class AgentRun(BaseModel):
     id: int | None = None
     task_id: int | None = None
+    run_key: str | None = None
+    parent_run_id: int | None = None
     story_id: str | None = None
+    run_kind: str = "interactive"
+    trigger_source: str = "manual"
+    triggered_by: str | None = None
+    approved_by: str | None = None
+    completed_by: str | None = None
     agent_class: str
     agent_role: str
+    repo_name: str | None = None
+    branch_name: str | None = None
+    pr_url: str | None = None
+    slack_channel_id: str | None = None
+    slack_thread_ts: str | None = None
     openclaw_session_id: str | None = None
     status: str = "running"
+    artifact_summary_json: list[dict[str, Any]] = Field(default_factory=list)
+    context_json: dict[str, Any] | None = None
+    tool_bundle_json: list[str] | None = None
     resume_context_json: dict[str, Any] | None = None
     error_message: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -33,6 +49,7 @@ class Signal(BaseModel):
     source: str
     kind: str
     task_id: int | None = None
+    agent_run_id: int | None = None
     venture: str | None = None
     severity: str
     summary: str
@@ -47,6 +64,7 @@ class AttentionItem(BaseModel):
     id: int | None = None
     signal_id: int | None = None
     task_id: int | None = None
+    agent_run_id: int | None = None
     venture: str | None = None
     bucket: str
     severity: str
@@ -123,33 +141,84 @@ def create_agent_run(
     story_id: str | None,
     agent_class: str,
     agent_role: str,
+    *,
+    run_key: str | None = None,
+    parent_run_id: int | None = None,
+    run_kind: str = "interactive",
+    trigger_source: str = "manual",
+    triggered_by: str | None = None,
+    repo_name: str | None = None,
+    branch_name: str | None = None,
+    slack_channel_id: str | None = None,
+    slack_thread_ts: str | None = None,
     openclaw_session_id: str | None = None,
     status: str = "running",
+    artifact_summary_json: list[dict[str, Any]] | None = None,
+    context_json: dict[str, Any] | None = None,
+    tool_bundle_json: list[str] | None = None,
     resume_context_json: dict[str, Any] | None = None,
 ) -> AgentRun:
+    run_key = run_key or str(uuid.uuid4())
     conn = _conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
                 INSERT INTO agent_runs (
-                    task_id, story_id, agent_class, agent_role, openclaw_session_id, status, resume_context_json
+                    task_id,
+                    run_key,
+                    parent_run_id,
+                    story_id,
+                    run_kind,
+                    trigger_source,
+                    triggered_by,
+                    agent_class,
+                    agent_role,
+                    repo_name,
+                    branch_name,
+                    slack_channel_id,
+                    slack_thread_ts,
+                    openclaw_session_id,
+                    status,
+                    artifact_summary_json,
+                    context_json,
+                    tool_bundle_json,
+                    resume_context_json
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
                     task_id,
+                    run_key,
+                    parent_run_id,
                     story_id,
+                    run_kind,
+                    trigger_source,
+                    triggered_by,
                     agent_class,
                     agent_role,
+                    repo_name,
+                    branch_name,
+                    slack_channel_id,
+                    slack_thread_ts,
                     openclaw_session_id,
                     status,
+                    json.dumps(artifact_summary_json or []),
+                    json.dumps(context_json) if context_json is not None else None,
+                    json.dumps(tool_bundle_json) if tool_bundle_json is not None else None,
                     json.dumps(resume_context_json) if resume_context_json is not None else None,
                 ),
             )
             conn.commit()
-            return _row_to_model(cur.fetchone(), AgentRun, "resume_context_json")
+            return _row_to_model(
+                cur.fetchone(),
+                AgentRun,
+                "artifact_summary_json",
+                "context_json",
+                "tool_bundle_json",
+                "resume_context_json",
+            )
     finally:
         conn.close()
 
@@ -166,8 +235,16 @@ def get_agent_run(run_id: int) -> AgentRun | None:
 
 def update_agent_run(
     run_id: int,
-    status: str,
+    status: str | None = None,
     *,
+    approved_by: str | None = None,
+    completed_by: str | None = None,
+    branch_name: str | None = None,
+    pr_url: str | None = None,
+    slack_channel_id: str | None = None,
+    slack_thread_ts: str | None = None,
+    context_json: dict[str, Any] | None = None,
+    tool_bundle_json: list[str] | None = None,
     resume_context_json: dict[str, Any] | None = None,
     error_message: str | None = None,
     openclaw_session_id: str | None = None,
@@ -175,11 +252,38 @@ def update_agent_run(
     conn = _conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            set_parts = ["status = %s", "last_heartbeat_at = NOW()"]
-            params: list[Any] = [status]
+            set_parts = ["last_heartbeat_at = NOW()"]
+            params: list[Any] = []
 
-            if status in {"completed", "failed", "cancelled"}:
+            if status is not None:
+                set_parts.append("status = %s")
+                params.append(status)
+            if status in {"completed", "failed", "cancelled", "awaiting_manual_verification"}:
                 set_parts.append("finished_at = NOW()")
+            if approved_by is not None:
+                set_parts.append("approved_by = %s")
+                params.append(approved_by)
+            if completed_by is not None:
+                set_parts.append("completed_by = %s")
+                params.append(completed_by)
+            if branch_name is not None:
+                set_parts.append("branch_name = %s")
+                params.append(branch_name)
+            if pr_url is not None:
+                set_parts.append("pr_url = %s")
+                params.append(pr_url)
+            if slack_channel_id is not None:
+                set_parts.append("slack_channel_id = %s")
+                params.append(slack_channel_id)
+            if slack_thread_ts is not None:
+                set_parts.append("slack_thread_ts = %s")
+                params.append(slack_thread_ts)
+            if context_json is not None:
+                set_parts.append("context_json = %s")
+                params.append(json.dumps(context_json))
+            if tool_bundle_json is not None:
+                set_parts.append("tool_bundle_json = %s")
+                params.append(json.dumps(tool_bundle_json))
             if resume_context_json is not None:
                 set_parts.append("resume_context_json = %s")
                 params.append(json.dumps(resume_context_json))
@@ -201,7 +305,41 @@ def update_agent_run(
                 params,
             )
             conn.commit()
-            return _row_to_model(cur.fetchone(), AgentRun, "resume_context_json")
+            return _row_to_model(
+                cur.fetchone(),
+                AgentRun,
+                "artifact_summary_json",
+                "context_json",
+                "tool_bundle_json",
+                "resume_context_json",
+            )
+    finally:
+        conn.close()
+
+
+def append_agent_run_artifact(run_id: int, artifact: dict[str, Any]) -> AgentRun | None:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                UPDATE agent_runs
+                SET artifact_summary_json = COALESCE(artifact_summary_json, '[]'::jsonb) || %s::jsonb,
+                    last_heartbeat_at = NOW()
+                WHERE id = %s
+                RETURNING *
+                """,
+                (json.dumps([artifact]), run_id),
+            )
+            conn.commit()
+            return _row_to_model(
+                cur.fetchone(),
+                AgentRun,
+                "artifact_summary_json",
+                "context_json",
+                "tool_bundle_json",
+                "resume_context_json",
+            )
     finally:
         conn.close()
 
@@ -211,6 +349,7 @@ def create_signal(
     source: str,
     kind: str,
     task_id: int | None,
+    agent_run_id: int | None,
     venture: str | None,
     severity: str,
     summary: str,
@@ -224,15 +363,16 @@ def create_signal(
             cur.execute(
                 """
                 INSERT INTO signals (
-                    source, kind, task_id, venture, severity, summary, details_json, dedupe_key, bucket
+                    source, kind, task_id, agent_run_id, venture, severity, summary, details_json, dedupe_key, bucket
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
                     source,
                     kind,
                     task_id,
+                    agent_run_id,
                     venture,
                     severity,
                     summary,
@@ -271,6 +411,7 @@ def create_attention_item(
     *,
     signal_id: int | None,
     task_id: int | None,
+    agent_run_id: int | None,
     venture: str | None,
     bucket: str,
     severity: str,
@@ -287,6 +428,7 @@ def create_attention_item(
                 INSERT INTO attention_items (
                     signal_id,
                     task_id,
+                    agent_run_id,
                     venture,
                     bucket,
                     severity,
@@ -295,12 +437,13 @@ def create_attention_item(
                     slack_channel_id,
                     slack_thread_ts
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
                     signal_id,
                     task_id,
+                    agent_run_id,
                     venture,
                     bucket,
                     severity,
@@ -701,7 +844,17 @@ def get_task_control_state(task_id: int) -> dict[str, Any] | None:
                 """,
                 (task_id,),
             )
-            agent_runs = [_row_to_model(row, AgentRun, "resume_context_json") for row in cur.fetchall()]
+            agent_runs = [
+                _row_to_model(
+                    row,
+                    AgentRun,
+                    "artifact_summary_json",
+                    "context_json",
+                    "tool_bundle_json",
+                    "resume_context_json",
+                )
+                for row in cur.fetchall()
+            ]
     finally:
         conn.close()
 
