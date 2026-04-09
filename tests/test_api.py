@@ -127,6 +127,23 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()["action_type"], "git_push")
 
+    @patch("api.app.create_approval")
+    def test_create_approval_endpoint_returns_bad_request_for_missing_task(self, create_approval) -> None:
+        create_approval.side_effect = ValueError("Task 1 was not found.")
+
+        response = self.client.post(
+            "/v1/approvals",
+            json={
+                "task_id": 1,
+                "action_type": "git_push",
+                "target_summary": "Push branch to repo",
+            },
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "Task 1 was not found.")
+
     def test_control_api_requires_bearer_token(self) -> None:
         response = self.client.get("/v1/attention")
 

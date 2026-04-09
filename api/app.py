@@ -69,7 +69,10 @@ def evaluate_policy_endpoint(payload: PolicyEvaluationRequest, _: None = Depends
 
 @app.post("/v1/approvals", status_code=201)
 def create_approval_endpoint(payload: ApprovalCreateRequest, _: None = Depends(require_control_api_token)) -> dict:
-    approval = create_approval(payload)
+    try:
+        approval = create_approval(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return approval.model_dump()
 
 

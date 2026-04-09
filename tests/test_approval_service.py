@@ -67,13 +67,26 @@ class ApprovalServiceTests(unittest.TestCase):
             )
 
     @patch("services.approval_service.create_approval_request")
+    @patch("services.approval_service.get_task")
     @patch("services.slack_routing.get_task")
     @patch("services.slack_routing.os.getenv")
-    def test_create_approval_uses_task_slack_route(self, getenv, get_task, create_approval_request) -> None:
+    def test_create_approval_uses_task_slack_route(
+        self,
+        getenv,
+        get_route_task,
+        get_task,
+        create_approval_request,
+    ) -> None:
         from services.approval_service import ApprovalCreateRequest, create_approval
 
         getenv.return_value = "#default-chief"
         get_task.return_value = Task(
+            id=9,
+            title="Test",
+            description="Test",
+            category="ops",
+        )
+        get_route_task.return_value = Task(
             id=9,
             title="Test",
             description="Test",

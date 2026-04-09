@@ -13,6 +13,7 @@ from models.control_plane import (
     list_pending_approvals,
     resolve_approval_request,
 )
+from models.task import get_task
 from services.slack_routing import resolve_slack_route
 
 
@@ -41,6 +42,10 @@ def _trusted_approvers() -> set[str]:
 
 
 def create_approval(request: ApprovalCreateRequest) -> ApprovalRequest:
+    task = get_task(request.task_id)
+    if not task:
+        raise ValueError(f"Task {request.task_id} was not found.")
+
     slack_channel_id, slack_thread_ts = resolve_slack_route(
         task_id=request.task_id,
         explicit_channel_id=request.requested_slack_channel_id,
