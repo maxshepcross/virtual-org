@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.6 - 2026-04-08
+## 0.1.7 - 2026-04-09
 
 - Fixed `scripts/run_api.py` so it can start cleanly on a server without the `PYTHONPATH=...` workaround.
 - Added a Linux `systemd` service template for keeping the control API running 24/7 and restarting it automatically after crashes or reboots.
