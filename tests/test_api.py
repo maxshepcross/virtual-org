@@ -7,7 +7,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from api.app import app
-from models.control_plane import ApprovalRequest, AttentionItem, Signal
+from models.control_plane import AgentRun, ApprovalRequest, AttentionItem, Signal
 
 
 class ApiTests(unittest.TestCase):
@@ -143,6 +143,59 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"], "Task 1 was not found.")
+
+    @patch("api.app.create_agent_run")
+    def test_create_agent_run_endpoint_returns_rich_run_record(self, create_agent_run) -> None:
+        create_agent_run.return_value = AgentRun(
+            id=11,
+            task_id=9,
+            run_key="run-abc",
+            story_id="STORY-1",
+            run_kind="implementation",
+            trigger_source="task_queue",
+            agent_class="claude",
+            agent_role="implementer",
+            artifact_summary_json=[],
+            status="running",
+        )
+
+        response = self.client.post(
+            "/v1/agent-runs",
+            json={
+                "task_id": 9,
+                "story_id": "STORY-1",
+                "run_kind": "implementation",
+                "trigger_source": "task_queue",
+                "agent_class": "claude",
+                "agent_role": "implementer",
+            },
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["run_key"], "run-abc")
+        self.assertEqual(response.json()["run_kind"], "implementation")
+
+    @patch("api.app.append_agent_run_artifact")
+    def test_append_agent_run_artifact_endpoint_returns_updated_run(self, append_agent_run_artifact) -> None:
+        append_agent_run_artifact.return_value = AgentRun(
+            id=11,
+            task_id=9,
+            run_key="run-abc",
+            agent_class="claude",
+            agent_role="implementer",
+            artifact_summary_json=[{"type": "verification"}],
+            status="running",
+        )
+
+        response = self.client.post(
+            "/v1/agent-runs/11/artifacts",
+            json={"artifact": {"type": "verification"}},
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["artifact_summary_json"][0]["type"], "verification")
 
     def test_control_api_requires_bearer_token(self) -> None:
         response = self.client.get("/v1/attention")

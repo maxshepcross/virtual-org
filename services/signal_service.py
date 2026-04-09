@@ -21,6 +21,7 @@ class SignalInput(BaseModel):
     source: str
     kind: str
     task_id: int | None = None
+    agent_run_id: int | None = None
     venture: str | None = None
     severity: str
     summary: str
@@ -81,6 +82,7 @@ def record_signal(signal_input: SignalInput) -> dict[str, Signal | AttentionItem
         source=signal_input.source,
         kind=signal_input.kind,
         task_id=signal_input.task_id,
+        agent_run_id=signal_input.agent_run_id,
         venture=signal_input.venture,
         severity=signal_input.severity,
         summary=signal_input.summary,
@@ -99,6 +101,7 @@ def record_signal(signal_input: SignalInput) -> dict[str, Signal | AttentionItem
         attention_item = create_attention_item(
             signal_id=signal.id,
             task_id=signal.task_id,
+            agent_run_id=signal.agent_run_id,
             venture=signal.venture,
             bucket=bucket,
             severity=signal.severity,

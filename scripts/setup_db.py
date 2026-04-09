@@ -72,11 +72,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idea
 CREATE TABLE IF NOT EXISTS agent_runs (
     id              BIGSERIAL PRIMARY KEY,
     task_id         BIGINT REFERENCES tasks(id) ON DELETE CASCADE,
+    run_key         TEXT NOT NULL,
+    parent_run_id   BIGINT REFERENCES agent_runs(id) ON DELETE SET NULL,
     story_id        TEXT,
+    run_kind        TEXT NOT NULL DEFAULT 'interactive',
+    trigger_source  TEXT NOT NULL DEFAULT 'manual',
+    triggered_by    TEXT,
+    approved_by     TEXT,
+    completed_by    TEXT,
     agent_class     TEXT NOT NULL,
     agent_role      TEXT NOT NULL,
+    repo_name       TEXT,
+    branch_name     TEXT,
+    pr_url          TEXT,
+    slack_channel_id TEXT,
+    slack_thread_ts TEXT,
     openclaw_session_id TEXT,
     status          TEXT NOT NULL DEFAULT 'running',
+    artifact_summary_json JSONB NOT NULL DEFAULT '[]'::JSONB,
+    context_json    JSONB,
+    tool_bundle_json JSONB,
     resume_context_json JSONB,
     error_message   TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -87,12 +102,16 @@ CREATE TABLE IF NOT EXISTS agent_runs (
 
 CREATE INDEX IF NOT EXISTS idx_agent_runs_task_id ON agent_runs(task_id);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_runs_run_key ON agent_runs(run_key);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_parent_run_id ON agent_runs(parent_run_id);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_trigger_source ON agent_runs(trigger_source);
 
 CREATE TABLE IF NOT EXISTS signals (
     id              BIGSERIAL PRIMARY KEY,
     source          TEXT NOT NULL,
     kind            TEXT NOT NULL,
     task_id         BIGINT REFERENCES tasks(id) ON DELETE SET NULL,
+    agent_run_id    BIGINT REFERENCES agent_runs(id) ON DELETE SET NULL,
     venture         TEXT,
     severity        TEXT NOT NULL,
     summary         TEXT NOT NULL,
@@ -104,6 +123,7 @@ CREATE TABLE IF NOT EXISTS signals (
 );
 
 CREATE INDEX IF NOT EXISTS idx_signals_task_id ON signals(task_id);
+CREATE INDEX IF NOT EXISTS idx_signals_agent_run_id ON signals(agent_run_id);
 CREATE INDEX IF NOT EXISTS idx_signals_bucket ON signals(bucket);
 CREATE INDEX IF NOT EXISTS idx_signals_dedupe ON signals(dedupe_key);
 
@@ -111,6 +131,7 @@ CREATE TABLE IF NOT EXISTS attention_items (
     id              BIGSERIAL PRIMARY KEY,
     signal_id       BIGINT REFERENCES signals(id) ON DELETE SET NULL,
     task_id         BIGINT REFERENCES tasks(id) ON DELETE SET NULL,
+    agent_run_id    BIGINT REFERENCES agent_runs(id) ON DELETE SET NULL,
     venture         TEXT,
     bucket          TEXT NOT NULL,
     severity        TEXT NOT NULL,
@@ -124,6 +145,7 @@ CREATE TABLE IF NOT EXISTS attention_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_attention_items_task_id ON attention_items(task_id);
+CREATE INDEX IF NOT EXISTS idx_attention_items_agent_run_id ON attention_items(agent_run_id);
 CREATE INDEX IF NOT EXISTS idx_attention_items_status ON attention_items(status);
 CREATE INDEX IF NOT EXISTS idx_attention_items_bucket ON attention_items(bucket);
 
@@ -212,10 +234,29 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slack_channel_id TEXT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slack_thread_ts TEXT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approval_state TEXT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS latest_attention_severity TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS run_key TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS parent_run_id BIGINT REFERENCES agent_runs(id) ON DELETE SET NULL;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS run_kind TEXT NOT NULL DEFAULT 'interactive';
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS trigger_source TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS triggered_by TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS approved_by TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS completed_by TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS repo_name TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS branch_name TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS pr_url TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS slack_channel_id TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS slack_thread_ts TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS artifact_summary_json JSONB NOT NULL DEFAULT '[]'::JSONB;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS context_json JSONB;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS tool_bundle_json JSONB;
+ALTER TABLE signals ADD COLUMN IF NOT EXISTS agent_run_id BIGINT REFERENCES agent_runs(id) ON DELETE SET NULL;
+ALTER TABLE attention_items ADD COLUMN IF NOT EXISTS agent_run_id BIGINT REFERENCES agent_runs(id) ON DELETE SET NULL;
 ALTER TABLE attention_items ADD COLUMN IF NOT EXISTS slack_message_ts TEXT;
 ALTER TABLE attention_items ADD COLUMN IF NOT EXISTS slack_posted_at TIMESTAMPTZ;
 ALTER TABLE approval_requests ADD COLUMN IF NOT EXISTS slack_message_ts TEXT;
 ALTER TABLE approval_requests ADD COLUMN IF NOT EXISTS slack_posted_at TIMESTAMPTZ;
+UPDATE agent_runs SET run_key = id::text WHERE run_key IS NULL OR BTRIM(run_key) = '';
+ALTER TABLE agent_runs ALTER COLUMN run_key SET NOT NULL;
 """
 
 

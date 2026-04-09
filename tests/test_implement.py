@@ -1,6 +1,9 @@
 """Regression tests for implementation prompt shaping and story flow helpers."""
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from implement import (
     _all_stories_completed,
@@ -11,7 +14,9 @@ from implement import (
     _select_next_story,
     _verification_failed,
     _verification_requires_manual_review,
+    run_implementation,
 )
+from models.control_plane import AgentRun
 from models.task import Task
 
 
@@ -104,6 +109,84 @@ class ImplementTimeoutTests(unittest.TestCase):
                 [{"status": "completed"}, {"status": "awaiting_manual_verification"}]
             )
         )
+
+    @patch("implement.append_agent_run_artifact")
+    @patch("implement.update_agent_run")
+    @patch("implement.update_task_status")
+    @patch("implement.ensure_branch")
+    @patch("implement.create_agent_run")
+    def test_run_implementation_marks_run_failed_when_branch_setup_raises(
+        self,
+        create_agent_run,
+        ensure_branch,
+        update_task_status,
+        update_agent_run,
+        append_agent_run_artifact,
+    ) -> None:
+        create_agent_run.return_value = AgentRun(
+            id=41,
+            task_id=7,
+            run_key="run-41",
+            story_id="STORY-1",
+            run_kind="implementation",
+            trigger_source="task_queue",
+            agent_class="claude",
+            agent_role="implementer",
+            status="running",
+        )
+        ensure_branch.side_effect = RuntimeError("dirty repo")
+
+        with TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            (repo_root / "owner_repo").mkdir()
+            task = Task(
+                id=7,
+                title="Ship fix",
+                description="Implement the first story",
+                category="ops",
+                target_repo="owner/repo",
+                lease_token="lease-1",
+            )
+
+            with patch("implement.REPOS_DIR", repo_root), patch("implement.ALLOWED_REPOS", ["owner/repo"]):
+                result = run_implementation(
+                    task,
+                    {
+                        "execution_stories": [
+                            {
+                                "id": "STORY-1",
+                                "title": "Fix branch flow",
+                                "priority": 1,
+                                "status": "pending",
+                                "verification": [],
+                            }
+                        ]
+                    },
+                )
+
+        self.assertEqual(result["run_id"], 41)
+        self.assertEqual(result["run_key"], "run-41")
+        self.assertEqual(result["current_story_id"], "STORY-1")
+        self.assertIn("dirty repo", result["error"])
+        append_agent_run_artifact.assert_called_with(
+            41,
+            {
+                "type": "run_error",
+                "at": append_agent_run_artifact.call_args.args[1]["at"],
+                "story_id": "STORY-1",
+                "error": "dirty repo",
+            },
+        )
+        update_agent_run.assert_called_with(
+            41,
+            "failed",
+            completed_by="implement.py",
+            branch_name=None,
+            pr_url=None,
+            error_message="dirty repo",
+        )
+        update_task_status.assert_called_once()
+        self.assertEqual(update_task_status.call_args.args[:3], (7, "lease-1", "failed"))
 
 
 if __name__ == "__main__":

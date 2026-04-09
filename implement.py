@@ -13,6 +13,7 @@ from typing import Any
 
 from config.constants import ALLOWED_REPOS, IMPLEMENT_MODEL, IMPLEMENT_TIMEOUT_SECONDS
 from config.env import load_project_env
+from models.control_plane import append_agent_run_artifact, create_agent_run, update_agent_run
 from models.task import Task, update_task_status
 from services.github_ops import ensure_branch, commit_and_push, open_pr
 
@@ -202,6 +203,7 @@ def _open_pr_for_completed_stories(
     execution_stories: list[dict[str, Any]],
     progress_notes: list[dict[str, Any]],
     verification_log: list[dict[str, Any]],
+    run_key: str | None = None,
 ) -> dict[str, Any]:
     """Open the PR after all stories have been completed and verified."""
     pr_body = f"""## Summary
@@ -227,6 +229,7 @@ def _open_pr_for_completed_stories(
 ---
 
 *Automated by the AI Venture Studio workflow — Task #{task.id}*
+*Run: {run_key or "N/A"}*
 """
 
     pr_result = open_pr(
@@ -385,130 +388,300 @@ def run_implementation(task: Task, research: dict) -> dict:
 
     execution_stories = _get_execution_stories(task, research)
     manual_review_story = _find_manual_review_story(execution_stories)
-    if manual_review_story:
+    selected_story = _select_next_story(execution_stories)
+    run_story = manual_review_story or selected_story
+    progress_notes = deepcopy(task.progress_notes_json or [])
+    verification_log = deepcopy(task.verification_json or [])
+    implementation_run = create_agent_run(
+        task_id=task.id,
+        story_id=run_story.get("id") if run_story else None,
+        run_kind="implementation",
+        trigger_source="task_queue",
+        triggered_by=task.requested_by,
+        agent_class="claude",
+        agent_role="implementer",
+        repo_name=task.target_repo,
+        branch_name=task.branch_name,
+        slack_channel_id=task.slack_channel_id,
+        slack_thread_ts=task.slack_thread_ts,
+        status="running",
+        context_json={
+            "task_title": task.title,
+            "category": task.category,
+            "target_repo": task.target_repo,
+            "current_story_id": run_story.get("id") if run_story else None,
+        },
+        tool_bundle_json=["claude", "git", "pytest"],
+    )
+
+    def _record_run_artifact(artifact_type: str, **details: Any) -> None:
+        if implementation_run is None:
+            return
+        append_agent_run_artifact(
+            implementation_run.id,
+            {
+                "type": artifact_type,
+                "at": datetime.now(timezone.utc).isoformat(),
+                **details,
+            },
+        )
+
+    def _finish_run(
+        status: str,
+        *,
+        branch_name: str | None = None,
+        pr_url: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        if implementation_run is None:
+            return
+        update_agent_run(
+            implementation_run.id,
+            status,
+            completed_by="implement.py",
+            branch_name=branch_name,
+            pr_url=pr_url,
+            error_message=error_message,
+        )
+
+    try:
+        if manual_review_story:
+            _record_run_artifact(
+                "manual_verification_pending",
+                story_id=manual_review_story.get("id"),
+                story_title=manual_review_story.get("title"),
+            )
+            _finish_run(
+                "awaiting_manual_verification",
+                branch_name=task.branch_name,
+            )
+            _persist_task_progress(
+                task,
+                "implementing",
+                f"Waiting for manual verification on {manual_review_story.get('id')}.",
+                execution_stories_json=execution_stories,
+                progress_notes_json=task.progress_notes_json or [],
+                verification_json=task.verification_json or [],
+                current_story_id=manual_review_story.get("id"),
+                branch_name=task.branch_name,
+            )
+            return {
+                "branch_name": task.branch_name,
+                "execution_stories_json": execution_stories,
+                "progress_notes_json": task.progress_notes_json or [],
+                "verification_json": task.verification_json or [],
+                "current_story_id": manual_review_story.get("id"),
+                "run_id": implementation_run.id,
+                "run_key": implementation_run.run_key,
+                "manual_verification_required": True,
+                "error": "Manual verification required for the selected story",
+            }
+
+        if not selected_story:
+            if _all_stories_completed(execution_stories):
+                branch = task.branch_name
+                if not branch:
+                    _record_run_artifact(
+                        "error",
+                        reason="missing_branch_for_completed_stories",
+                    )
+                    _finish_run(
+                        "failed",
+                        error_message="All stories completed but branch_name is missing",
+                    )
+                    _persist_task_progress(
+                        task,
+                        "failed",
+                        "All stories are complete but there is no branch to open a PR from.",
+                        execution_stories_json=execution_stories,
+                        progress_notes_json=task.progress_notes_json or [],
+                        verification_json=task.verification_json or [],
+                        current_story_id=None,
+                        error_message="All stories completed but branch_name is missing",
+                    )
+                    return {"error": "All stories completed but branch_name is missing"}
+
+                _record_run_artifact(
+                    "pull_request_requested",
+                    branch_name=branch,
+                )
+                result = _open_pr_for_completed_stories(
+                    task=task,
+                    research=research,
+                    repo_dir=repo_dir,
+                    branch=branch,
+                    execution_stories=execution_stories,
+                    progress_notes=deepcopy(task.progress_notes_json or []),
+                    verification_log=deepcopy(task.verification_json or []),
+                    run_key=implementation_run.run_key,
+                )
+                _record_run_artifact(
+                    "pull_request",
+                    branch_name=branch,
+                    pr_url=result.get("pr_url"),
+                    pr_number=result.get("pr_number"),
+                )
+                _finish_run(
+                    "completed" if result.get("pr_url") else "failed",
+                    branch_name=branch,
+                    pr_url=result.get("pr_url"),
+                    error_message=result.get("error"),
+                )
+                result["run_id"] = implementation_run.id
+                result["run_key"] = implementation_run.run_key
+                return result
+
+            _record_run_artifact(
+                "noop",
+                message="No pending execution stories remain.",
+            )
+            _finish_run(
+                "completed",
+                branch_name=task.branch_name,
+            )
+            _persist_task_progress(
+                task,
+                "done",
+                "No pending execution stories remain.",
+                execution_stories_json=execution_stories,
+                progress_notes_json=task.progress_notes_json or [],
+                verification_json=task.verification_json or [],
+                current_story_id=None,
+                branch_name=task.branch_name,
+            )
+            return {
+                "branch_name": task.branch_name,
+                "execution_stories_json": execution_stories,
+                "progress_notes_json": task.progress_notes_json or [],
+                "verification_json": task.verification_json or [],
+                "current_story_id": None,
+                "run_id": implementation_run.id,
+                "run_key": implementation_run.run_key,
+                "error": "No pending execution stories remain",
+            }
+
+        # Reuse existing branch for later stories, or create a fresh one for the first story.
+        branch = ensure_branch(repo_dir, task.id or 0, task.title, task.branch_name)
+        logger.info("Using branch: %s", branch)
+        update_agent_run(
+            implementation_run.id,
+            branch_name=branch,
+        )
+        selected_story["status"] = "in_progress"
+        _record_run_artifact(
+            "story_started",
+            story_id=selected_story.get("id"),
+            story_title=selected_story.get("title"),
+            branch_name=branch,
+        )
         _persist_task_progress(
             task,
             "implementing",
-            f"Waiting for manual verification on {manual_review_story.get('id')}.",
+            f"Started {selected_story.get('id')}: {selected_story.get('title')}",
             execution_stories_json=execution_stories,
-            progress_notes_json=task.progress_notes_json or [],
-            verification_json=task.verification_json or [],
-            current_story_id=manual_review_story.get("id"),
-            branch_name=task.branch_name,
+            progress_notes_json=progress_notes,
+            verification_json=verification_log,
+            current_story_id=selected_story.get("id"),
+            branch_name=branch,
         )
-        return {
-            "branch_name": task.branch_name,
-            "execution_stories_json": execution_stories,
-            "progress_notes_json": task.progress_notes_json or [],
-            "verification_json": task.verification_json or [],
-            "current_story_id": manual_review_story.get("id"),
-            "manual_verification_required": True,
-            "error": "Manual verification required for the selected story",
-        }
 
-    selected_story = _select_next_story(execution_stories)
-    if not selected_story:
-        if _all_stories_completed(execution_stories):
-            branch = task.branch_name
-            if not branch:
+        # Build prompt for Claude Code
+        prompt = _build_claude_prompt(task, research, selected_story, execution_stories)
+
+        # Run Claude Code as a subprocess.
+        try:
+            result = subprocess.run(
+                [
+                    "claude",
+                    "--print",
+                    "--dangerously-skip-permissions",
+                    "-p", prompt,
+                ],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+                timeout=IMPLEMENT_TIMEOUT_SECONDS,
+                env={**os.environ, "CLAUDE_MODEL": IMPLEMENT_MODEL},
+            )
+
+            if result.returncode != 0:
+                selected_story["status"] = "failed"
+                _record_run_artifact(
+                    "agent_error",
+                    story_id=selected_story.get("id"),
+                    exit_code=result.returncode,
+                    stderr=(result.stderr or "")[-500:],
+                )
+                _finish_run(
+                    "failed",
+                    branch_name=branch,
+                    error_message=f"Claude Code exit code {result.returncode}: {result.stderr[:200]}",
+                )
+                progress_notes.append(
+                    _build_progress_note(
+                        selected_story,
+                        "failed",
+                        f"Claude Code exited with status {result.returncode}.",
+                    )
+                )
+                logger.error("Claude Code failed: %s", result.stderr[:500])
                 _persist_task_progress(
                     task,
                     "failed",
-                    "All stories are complete but there is no branch to open a PR from.",
+                    f"Claude Code failed during {selected_story.get('id')}.",
                     execution_stories_json=execution_stories,
-                    progress_notes_json=task.progress_notes_json or [],
-                    verification_json=task.verification_json or [],
-                    current_story_id=None,
-                    error_message="All stories completed but branch_name is missing",
+                    progress_notes_json=progress_notes,
+                    verification_json=verification_log,
+                    current_story_id=selected_story.get("id"),
+                    branch_name=branch,
+                    error_message=f"Claude Code exit code {result.returncode}: {result.stderr[:200]}",
                 )
-                return {"error": "All stories completed but branch_name is missing"}
+                return {
+                    "branch_name": branch,
+                    "execution_stories_json": execution_stories,
+                    "progress_notes_json": progress_notes,
+                    "verification_json": verification_log,
+                    "current_story_id": selected_story.get("id"),
+                    "run_id": implementation_run.id,
+                    "run_key": implementation_run.run_key,
+                    "error": f"Claude Code exit code {result.returncode}: {result.stderr[:200]}",
+                }
 
-            return _open_pr_for_completed_stories(
-                task=task,
-                research=research,
-                repo_dir=repo_dir,
-                branch=branch,
-                execution_stories=execution_stories,
-                progress_notes=deepcopy(task.progress_notes_json or []),
-                verification_log=deepcopy(task.verification_json or []),
+            claude_output = result.stdout[-2000:]  # Last 2000 chars of output
+            _record_run_artifact(
+                "agent_output",
+                story_id=selected_story.get("id"),
+                output_excerpt=claude_output[-500:],
             )
-
-        _persist_task_progress(
-            task,
-            "done",
-            "No pending execution stories remain.",
-            execution_stories_json=execution_stories,
-            progress_notes_json=task.progress_notes_json or [],
-            verification_json=task.verification_json or [],
-            current_story_id=None,
-            branch_name=task.branch_name,
-        )
-        return {
-            "branch_name": task.branch_name,
-            "execution_stories_json": execution_stories,
-            "progress_notes_json": task.progress_notes_json or [],
-            "verification_json": task.verification_json or [],
-            "current_story_id": None,
-            "error": "No pending execution stories remain",
-        }
-
-    progress_notes = deepcopy(task.progress_notes_json or [])
-    verification_log = deepcopy(task.verification_json or [])
-
-    # Reuse existing branch for later stories, or create a fresh one for the first story.
-    branch = ensure_branch(repo_dir, task.id or 0, task.title, task.branch_name)
-    logger.info("Using branch: %s", branch)
-    selected_story["status"] = "in_progress"
-    _persist_task_progress(
-        task,
-        "implementing",
-        f"Started {selected_story.get('id')}: {selected_story.get('title')}",
-        execution_stories_json=execution_stories,
-        progress_notes_json=progress_notes,
-        verification_json=verification_log,
-        current_story_id=selected_story.get("id"),
-        branch_name=branch,
-    )
-
-    # Build prompt for Claude Code
-    prompt = _build_claude_prompt(task, research, selected_story, execution_stories)
-
-    # Run Claude Code as a subprocess
-    try:
-        result = subprocess.run(
-            [
-                "claude",
-                "--print",
-                "--dangerously-skip-permissions",
-                "-p", prompt,
-            ],
-            cwd=repo_dir,
-            capture_output=True,
-            text=True,
-            timeout=IMPLEMENT_TIMEOUT_SECONDS,
-            env={**os.environ, "CLAUDE_MODEL": IMPLEMENT_MODEL},
-        )
-
-        if result.returncode != 0:
+        except subprocess.TimeoutExpired:
             selected_story["status"] = "failed"
+            _record_run_artifact(
+                "agent_timeout",
+                story_id=selected_story.get("id"),
+                timeout_seconds=IMPLEMENT_TIMEOUT_SECONDS,
+            )
+            _finish_run(
+                "failed",
+                branch_name=branch,
+                error_message=f"Claude Code timed out after {_format_timeout(IMPLEMENT_TIMEOUT_SECONDS)}",
+            )
             progress_notes.append(
                 _build_progress_note(
                     selected_story,
                     "failed",
-                    f"Claude Code exited with status {result.returncode}.",
+                    "Claude Code timed out before the selected story completed.",
                 )
             )
-            logger.error("Claude Code failed: %s", result.stderr[:500])
             _persist_task_progress(
                 task,
                 "failed",
-                f"Claude Code failed during {selected_story.get('id')}.",
+                f"Claude Code timed out during {selected_story.get('id')}.",
                 execution_stories_json=execution_stories,
                 progress_notes_json=progress_notes,
                 verification_json=verification_log,
                 current_story_id=selected_story.get("id"),
                 branch_name=branch,
-                error_message=f"Claude Code exit code {result.returncode}: {result.stderr[:200]}",
+                error_message=f"Claude Code timed out after {_format_timeout(IMPLEMENT_TIMEOUT_SECONDS)}",
             )
             return {
                 "branch_name": branch,
@@ -516,190 +689,267 @@ def run_implementation(task: Task, research: dict) -> dict:
                 "progress_notes_json": progress_notes,
                 "verification_json": verification_log,
                 "current_story_id": selected_story.get("id"),
-                "error": f"Claude Code exit code {result.returncode}: {result.stderr[:200]}",
+                "run_id": implementation_run.id,
+                "run_key": implementation_run.run_key,
+                "error": f"Claude Code timed out after {_format_timeout(IMPLEMENT_TIMEOUT_SECONDS)}",
             }
 
-        claude_output = result.stdout[-2000:]  # Last 2000 chars of output
-    except subprocess.TimeoutExpired:
-        selected_story["status"] = "failed"
+        verification_results = _run_story_verification(repo_dir, selected_story)
+        _record_run_artifact(
+            "verification",
+            story_id=selected_story.get("id"),
+            results=verification_results,
+        )
+        verification_log.append({
+            "story_id": selected_story.get("id"),
+            "story_title": selected_story.get("title"),
+            "at": datetime.now(timezone.utc).isoformat(),
+            "results": verification_results,
+        })
+        if _verification_failed(verification_results):
+            selected_story["status"] = "failed"
+            _finish_run(
+                "failed",
+                branch_name=branch,
+                error_message="Automated verification failed for the selected story",
+            )
+            progress_notes.append(
+                _build_progress_note(
+                    selected_story,
+                    "failed",
+                    "Automated verification failed for this story.",
+                )
+            )
+            _persist_task_progress(
+                task,
+                "failed",
+                f"Verification failed for {selected_story.get('id')}.",
+                execution_stories_json=execution_stories,
+                progress_notes_json=progress_notes,
+                verification_json=verification_log,
+                current_story_id=selected_story.get("id"),
+                branch_name=branch,
+                error_message="Automated verification failed for the selected story",
+            )
+            return {
+                "branch_name": branch,
+                "claude_output": claude_output,
+                "execution_stories_json": execution_stories,
+                "progress_notes_json": progress_notes,
+                "verification_json": verification_log,
+                "current_story_id": selected_story.get("id"),
+                "run_id": implementation_run.id,
+                "run_key": implementation_run.run_key,
+                "error": "Automated verification failed for the selected story",
+            }
+
+        # Commit and push
+        commit_msg = (
+            f"studio: {task.title} [{selected_story.get('id')}]\n\n"
+            f"Task #{task.id}\n"
+            f"Story: {selected_story.get('title')}\n"
+            "Implemented by the AI Venture Studio workflow."
+        )
+        push_result = commit_and_push(repo_dir, branch, commit_msg)
+
+        if push_result["status"] != "pushed":
+            selected_story["status"] = "failed"
+            error_message = {
+                "no_changes": "No changes to commit (Claude Code made no modifications)",
+                "commit_failed": push_result.get("error") or "git commit failed",
+                "push_failed": push_result.get("error") or "git push failed",
+            }[push_result["status"]]
+            _record_run_artifact(
+                "git_push_failed",
+                story_id=selected_story.get("id"),
+                status=push_result["status"],
+                error=error_message,
+            )
+            _finish_run(
+                "failed",
+                branch_name=branch,
+                error_message=error_message,
+            )
+            progress_notes.append(
+                _build_progress_note(
+                    selected_story,
+                    "failed",
+                    error_message,
+                )
+            )
+            _persist_task_progress(
+                task,
+                "failed",
+                f"{selected_story.get('id')} failed: {error_message}",
+                execution_stories_json=execution_stories,
+                progress_notes_json=progress_notes,
+                verification_json=verification_log,
+                current_story_id=selected_story.get("id"),
+                branch_name=branch,
+                error_message=error_message,
+            )
+            return {
+                "branch_name": branch,
+                "execution_stories_json": execution_stories,
+                "progress_notes_json": progress_notes,
+                "verification_json": verification_log,
+                "current_story_id": selected_story.get("id"),
+                "run_id": implementation_run.id,
+                "run_key": implementation_run.run_key,
+                "error": error_message,
+                "claude_output": claude_output,
+            }
+
+        _record_run_artifact(
+            "git_push",
+            story_id=selected_story.get("id"),
+            branch_name=branch,
+        )
+        if _verification_requires_manual_review(verification_results):
+            selected_story["status"] = "awaiting_manual_verification"
+            _finish_run(
+                "awaiting_manual_verification",
+                branch_name=branch,
+            )
+            progress_notes.append(
+                _build_progress_note(
+                    selected_story,
+                    "awaiting_manual_verification",
+                    "Automated work is complete, but manual verification is still required.",
+                )
+            )
+            _persist_task_progress(
+                task,
+                "implementing",
+                f"Waiting for manual verification on {selected_story.get('id')}.",
+                execution_stories_json=execution_stories,
+                progress_notes_json=progress_notes,
+                verification_json=verification_log,
+                current_story_id=selected_story.get("id"),
+                branch_name=branch,
+            )
+            return {
+                "branch_name": branch,
+                "claude_output": claude_output,
+                "execution_stories_json": execution_stories,
+                "progress_notes_json": progress_notes,
+                "verification_json": verification_log,
+                "current_story_id": selected_story.get("id"),
+                "run_id": implementation_run.id,
+                "run_key": implementation_run.run_key,
+                "manual_verification_required": True,
+                "error": "Manual verification required for the selected story",
+            }
+
+        selected_story["status"] = "completed"
+        _record_run_artifact(
+            "story_completed",
+            story_id=selected_story.get("id"),
+            story_title=selected_story.get("title"),
+            branch_name=branch,
+        )
         progress_notes.append(
             _build_progress_note(
                 selected_story,
-                "failed",
-                "Claude Code timed out before the selected story completed.",
+                "completed",
+                "Story implemented and changes pushed.",
             )
         )
+
+        next_story = _select_next_story(execution_stories)
+        if next_story:
+            _finish_run(
+                "completed",
+                branch_name=branch,
+            )
+            _persist_task_progress(
+                task,
+                "implementing",
+                f"Completed {selected_story.get('id')}; queued {next_story.get('id')} next.",
+                execution_stories_json=execution_stories,
+                progress_notes_json=progress_notes,
+                verification_json=verification_log,
+                current_story_id=next_story.get("id"),
+                branch_name=branch,
+            )
+            return {
+                "branch_name": branch,
+                "claude_output": claude_output,
+                "execution_stories_json": execution_stories,
+                "progress_notes_json": progress_notes,
+                "verification_json": verification_log,
+                "current_story_id": next_story.get("id"),
+                "run_id": implementation_run.id,
+                "run_key": implementation_run.run_key,
+                "completed_all_stories": False,
+                "next_story_id": next_story.get("id"),
+            }
+
+        result = _open_pr_for_completed_stories(
+            task=task,
+            research=research,
+            repo_dir=repo_dir,
+            branch=branch,
+            execution_stories=execution_stories,
+            progress_notes=progress_notes,
+            verification_log=verification_log,
+            run_key=implementation_run.run_key,
+        )
+        _record_run_artifact(
+            "pull_request",
+            branch_name=branch,
+            pr_url=result.get("pr_url"),
+            pr_number=result.get("pr_number"),
+        )
+        _finish_run(
+            "completed" if result.get("pr_url") else "failed",
+            branch_name=branch,
+            pr_url=result.get("pr_url"),
+            error_message=result.get("error"),
+        )
+        result["claude_output"] = claude_output
+        result["run_id"] = implementation_run.id
+        result["run_key"] = implementation_run.run_key
+        return result
+    except Exception as exc:
+        if selected_story and selected_story.get("status") not in {"completed", "awaiting_manual_verification"}:
+            selected_story["status"] = "failed"
+        error_message = str(exc) or exc.__class__.__name__
+        branch_name = locals().get("branch", task.branch_name)
+        try:
+            _record_run_artifact(
+                "run_error",
+                story_id=run_story.get("id") if run_story else None,
+                error=error_message,
+            )
+        except Exception:
+            pass
+        try:
+            _finish_run(
+                "failed",
+                branch_name=branch_name,
+                error_message=error_message,
+            )
+        except Exception:
+            pass
         _persist_task_progress(
             task,
             "failed",
-            f"Claude Code timed out during {selected_story.get('id')}.",
+            f"Implementation run failed before completion: {error_message}",
             execution_stories_json=execution_stories,
             progress_notes_json=progress_notes,
             verification_json=verification_log,
-            current_story_id=selected_story.get("id"),
-            branch_name=branch,
-            error_message=f"Claude Code timed out after {_format_timeout(IMPLEMENT_TIMEOUT_SECONDS)}",
-        )
-        return {
-            "branch_name": branch,
-            "execution_stories_json": execution_stories,
-            "progress_notes_json": progress_notes,
-            "verification_json": verification_log,
-            "current_story_id": selected_story.get("id"),
-            "error": f"Claude Code timed out after {_format_timeout(IMPLEMENT_TIMEOUT_SECONDS)}",
-        }
-
-    verification_results = _run_story_verification(repo_dir, selected_story)
-    verification_log.append({
-        "story_id": selected_story.get("id"),
-        "story_title": selected_story.get("title"),
-        "at": datetime.now(timezone.utc).isoformat(),
-        "results": verification_results,
-    })
-    if _verification_failed(verification_results):
-        selected_story["status"] = "failed"
-        progress_notes.append(
-            _build_progress_note(
-                selected_story,
-                "failed",
-                "Automated verification failed for this story.",
-            )
-        )
-        _persist_task_progress(
-            task,
-            "failed",
-            f"Verification failed for {selected_story.get('id')}.",
-            execution_stories_json=execution_stories,
-            progress_notes_json=progress_notes,
-            verification_json=verification_log,
-            current_story_id=selected_story.get("id"),
-            branch_name=branch,
-            error_message="Automated verification failed for the selected story",
-        )
-        return {
-            "branch_name": branch,
-            "claude_output": claude_output,
-            "execution_stories_json": execution_stories,
-            "progress_notes_json": progress_notes,
-            "verification_json": verification_log,
-            "current_story_id": selected_story.get("id"),
-            "error": "Automated verification failed for the selected story",
-        }
-
-    # Commit and push
-    commit_msg = (
-        f"studio: {task.title} [{selected_story.get('id')}]\n\n"
-        f"Task #{task.id}\n"
-        f"Story: {selected_story.get('title')}\n"
-        "Implemented by the AI Venture Studio workflow."
-    )
-    push_result = commit_and_push(repo_dir, branch, commit_msg)
-
-    if push_result["status"] != "pushed":
-        selected_story["status"] = "failed"
-        error_message = {
-            "no_changes": "No changes to commit (Claude Code made no modifications)",
-            "commit_failed": push_result.get("error") or "git commit failed",
-            "push_failed": push_result.get("error") or "git push failed",
-        }[push_result["status"]]
-        progress_notes.append(
-            _build_progress_note(
-                selected_story,
-                "failed",
-                error_message,
-            )
-        )
-        _persist_task_progress(
-            task,
-            "failed",
-            f"{selected_story.get('id')} failed: {error_message}",
-            execution_stories_json=execution_stories,
-            progress_notes_json=progress_notes,
-            verification_json=verification_log,
-            current_story_id=selected_story.get("id"),
-            branch_name=branch,
+            current_story_id=run_story.get("id") if run_story else None,
+            branch_name=branch_name,
             error_message=error_message,
         )
         return {
-            "branch_name": branch,
+            "branch_name": branch_name,
             "execution_stories_json": execution_stories,
             "progress_notes_json": progress_notes,
             "verification_json": verification_log,
-            "current_story_id": selected_story.get("id"),
+            "current_story_id": run_story.get("id") if run_story else None,
+            "run_id": implementation_run.id,
+            "run_key": implementation_run.run_key,
             "error": error_message,
-            "claude_output": claude_output,
         }
-
-    if _verification_requires_manual_review(verification_results):
-        selected_story["status"] = "awaiting_manual_verification"
-        progress_notes.append(
-            _build_progress_note(
-                selected_story,
-                "awaiting_manual_verification",
-                "Automated work is complete, but manual verification is still required.",
-            )
-        )
-        _persist_task_progress(
-            task,
-            "implementing",
-            f"Waiting for manual verification on {selected_story.get('id')}.",
-            execution_stories_json=execution_stories,
-            progress_notes_json=progress_notes,
-            verification_json=verification_log,
-            current_story_id=selected_story.get("id"),
-            branch_name=branch,
-        )
-        return {
-            "branch_name": branch,
-            "claude_output": claude_output,
-            "execution_stories_json": execution_stories,
-            "progress_notes_json": progress_notes,
-            "verification_json": verification_log,
-            "current_story_id": selected_story.get("id"),
-            "manual_verification_required": True,
-            "error": "Manual verification required for the selected story",
-        }
-
-    selected_story["status"] = "completed"
-    progress_notes.append(
-        _build_progress_note(
-            selected_story,
-            "completed",
-            "Story implemented and changes pushed.",
-        )
-    )
-
-    next_story = _select_next_story(execution_stories)
-    if next_story:
-        _persist_task_progress(
-            task,
-            "implementing",
-            f"Completed {selected_story.get('id')}; queued {next_story.get('id')} next.",
-            execution_stories_json=execution_stories,
-            progress_notes_json=progress_notes,
-            verification_json=verification_log,
-            current_story_id=next_story.get("id"),
-            branch_name=branch,
-        )
-        return {
-            "branch_name": branch,
-            "claude_output": claude_output,
-            "execution_stories_json": execution_stories,
-            "progress_notes_json": progress_notes,
-            "verification_json": verification_log,
-            "current_story_id": next_story.get("id"),
-            "completed_all_stories": False,
-            "next_story_id": next_story.get("id"),
-        }
-
-    result = _open_pr_for_completed_stories(
-        task=task,
-        research=research,
-        repo_dir=repo_dir,
-        branch=branch,
-        execution_stories=execution_stories,
-        progress_notes=progress_notes,
-        verification_log=verification_log,
-    )
-    result["claude_output"] = claude_output
-    return result

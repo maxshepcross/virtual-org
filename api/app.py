@@ -5,8 +5,10 @@ from __future__ import annotations
 import os
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel
 
 from models.control_plane import (
+    append_agent_run_artifact,
     create_agent_run,
     get_task_control_state,
     list_attention_items,
@@ -25,6 +27,47 @@ from services.policy_service import evaluate_and_record_policy
 from services.signal_service import SignalInput, record_signal
 
 app = FastAPI(title="AI Venture Studio Control API", version="0.1.0")
+
+
+class AgentRunCreateRequest(BaseModel):
+    task_id: int | None = None
+    story_id: str | None = None
+    run_key: str | None = None
+    parent_run_id: int | None = None
+    run_kind: str = "interactive"
+    trigger_source: str = "manual"
+    triggered_by: str | None = None
+    agent_class: str
+    agent_role: str
+    repo_name: str | None = None
+    branch_name: str | None = None
+    slack_channel_id: str | None = None
+    slack_thread_ts: str | None = None
+    openclaw_session_id: str | None = None
+    status: str = "running"
+    artifact_summary_json: list[dict] | None = None
+    context_json: dict | None = None
+    tool_bundle_json: list[str] | None = None
+    resume_context_json: dict | None = None
+
+
+class AgentRunUpdateRequest(BaseModel):
+    status: str | None = None
+    approved_by: str | None = None
+    completed_by: str | None = None
+    branch_name: str | None = None
+    pr_url: str | None = None
+    slack_channel_id: str | None = None
+    slack_thread_ts: str | None = None
+    context_json: dict | None = None
+    tool_bundle_json: list[str] | None = None
+    resume_context_json: dict | None = None
+    error_message: str | None = None
+    openclaw_session_id: str | None = None
+
+
+class AgentRunArtifactRequest(BaseModel):
+    artifact: dict
 
 
 def require_control_api_token(authorization: str | None = Header(default=None)) -> None:
@@ -112,28 +155,64 @@ def task_state_endpoint(task_id: int, _: None = Depends(require_control_api_toke
 
 
 @app.post("/v1/agent-runs", status_code=201)
-def create_agent_run_endpoint(payload: dict, _: None = Depends(require_control_api_token)) -> dict:
+def create_agent_run_endpoint(payload: AgentRunCreateRequest, _: None = Depends(require_control_api_token)) -> dict:
     run = create_agent_run(
-        task_id=payload.get("task_id"),
-        story_id=payload.get("story_id"),
-        agent_class=payload["agent_class"],
-        agent_role=payload["agent_role"],
-        openclaw_session_id=payload.get("openclaw_session_id"),
-        status=payload.get("status", "running"),
-        resume_context_json=payload.get("resume_context_json"),
+        task_id=payload.task_id,
+        story_id=payload.story_id,
+        run_key=payload.run_key,
+        parent_run_id=payload.parent_run_id,
+        run_kind=payload.run_kind,
+        trigger_source=payload.trigger_source,
+        triggered_by=payload.triggered_by,
+        agent_class=payload.agent_class,
+        agent_role=payload.agent_role,
+        repo_name=payload.repo_name,
+        branch_name=payload.branch_name,
+        slack_channel_id=payload.slack_channel_id,
+        slack_thread_ts=payload.slack_thread_ts,
+        openclaw_session_id=payload.openclaw_session_id,
+        status=payload.status,
+        artifact_summary_json=payload.artifact_summary_json,
+        context_json=payload.context_json,
+        tool_bundle_json=payload.tool_bundle_json,
+        resume_context_json=payload.resume_context_json,
     )
     return run.model_dump()
 
 
 @app.patch("/v1/agent-runs/{run_id}")
-def update_agent_run_endpoint(run_id: int, payload: dict, _: None = Depends(require_control_api_token)) -> dict:
+def update_agent_run_endpoint(
+    run_id: int,
+    payload: AgentRunUpdateRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
     run = update_agent_run(
         run_id,
-        payload["status"],
-        resume_context_json=payload.get("resume_context_json"),
-        error_message=payload.get("error_message"),
-        openclaw_session_id=payload.get("openclaw_session_id"),
+        payload.status,
+        approved_by=payload.approved_by,
+        completed_by=payload.completed_by,
+        branch_name=payload.branch_name,
+        pr_url=payload.pr_url,
+        slack_channel_id=payload.slack_channel_id,
+        slack_thread_ts=payload.slack_thread_ts,
+        context_json=payload.context_json,
+        tool_bundle_json=payload.tool_bundle_json,
+        resume_context_json=payload.resume_context_json,
+        error_message=payload.error_message,
+        openclaw_session_id=payload.openclaw_session_id,
     )
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Agent run {run_id} was not found.")
+    return run.model_dump()
+
+
+@app.post("/v1/agent-runs/{run_id}/artifacts")
+def append_agent_run_artifact_endpoint(
+    run_id: int,
+    payload: AgentRunArtifactRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    run = append_agent_run_artifact(run_id, payload.artifact)
     if not run:
         raise HTTPException(status_code=404, detail=f"Agent run {run_id} was not found.")
     return run.model_dump()

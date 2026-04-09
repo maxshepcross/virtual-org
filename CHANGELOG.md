@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added `docs/spectre-patterns.md`, a short architecture note on what Puebla should borrow from Harvey's Spectre model and a concrete five-step roadmap for this control plane.
+- Upgraded `agent_runs` into a richer run record with run keys, trigger metadata, branch and PR fields, artifact summaries, Slack route fields, and stronger audit details in `scripts/setup_db.py` and `models/control_plane.py`.
+- Threaded run records through the research loop, implementation loop, control API, Slack delivery, approval flow, and policy/signal routing so runs now leave a durable trail of artifacts, approvals, verification, and PR outcomes.
+- Added regression coverage for the richer run API and schema updates, and confirmed the full test suite passes in a local virtual environment.
+
 ## 0.1.7 - 2026-04-09
 
 - Fixed `scripts/run_api.py` so it can start cleanly on a server without the `PYTHONPATH=...` workaround.
