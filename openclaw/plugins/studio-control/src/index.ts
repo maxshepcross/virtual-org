@@ -45,7 +45,7 @@ export default definePluginEntry({
   id: "studio-control",
   name: "Studio Control",
   description: "Bridges OpenClaw to the AI Venture Studio control API.",
-  register(api) {
+  register(api: any) {
     const apiAny = api as any;
     const getClient = () => createControlApiClient(apiAny.pluginConfig);
 
