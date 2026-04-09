@@ -79,7 +79,7 @@ On a Linux server, use the included `systemd` service file. `systemd` is the bui
 
 Service template:
 
- - [deploy/systemd/virtual-org-control-api.service](deploy/systemd/virtual-org-control-api.service)
+- [deploy/systemd/virtual-org-control-api.service](deploy/systemd/virtual-org-control-api.service)
 
 Typical install steps on the server:
 
@@ -103,7 +103,7 @@ Founder-facing Slack delivery now uses a small dispatcher service. It checks for
 
 Service template:
 
- - [deploy/systemd/virtual-org-slack-dispatcher.service](deploy/systemd/virtual-org-slack-dispatcher.service)
+- [deploy/systemd/virtual-org-slack-dispatcher.service](deploy/systemd/virtual-org-slack-dispatcher.service)
 
 Typical install steps on the server:
 
