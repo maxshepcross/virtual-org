@@ -66,6 +66,42 @@ class ApprovalServiceTests(unittest.TestCase):
                 ),
             )
 
+    @patch("services.approval_service.get_approval_request")
+    @patch("services.approval_service.resolve_approval_request")
+    @patch("services.approval_service.os.getenv")
+    def test_resolve_allows_any_slack_user_when_wildcard_is_configured(
+        self,
+        getenv,
+        resolve_approval_request,
+        get_approval_request,
+    ) -> None:
+        getenv.return_value = "*"
+        get_approval_request.return_value = ApprovalRequest(
+            id=7,
+            task_id=8,
+            action_type="git_push",
+            target_summary="Push branch",
+            status="pending",
+        )
+        resolve_approval_request.return_value = ApprovalRequest(
+            id=7,
+            task_id=8,
+            action_type="git_push",
+            target_summary="Push branch",
+            status="approved",
+            approved_by_slack_user_id="U999",
+        )
+
+        result = resolve_approval(
+            7,
+            ApprovalResolutionRequest(
+                slack_user_id="U999",
+                resolution="approved",
+            ),
+        )
+
+        self.assertEqual(result.status, "approved")
+
     @patch("services.approval_service.create_approval_request")
     @patch("services.approval_service.get_task")
     @patch("services.slack_routing.get_task")

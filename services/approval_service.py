@@ -73,7 +73,8 @@ def resolve_approval(approval_id: int, request: ApprovalResolutionRequest) -> Ap
         return approval
 
     trusted = _trusted_approvers()
-    if trusted and request.slack_user_id not in trusted:
+    allow_any_slack_user = "*" in trusted
+    if trusted and not allow_any_slack_user and request.slack_user_id not in trusted:
         raise PermissionError("Slack user is not allowed to approve actions.")
 
     normalized_resolution = request.resolution.strip().lower()
