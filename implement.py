@@ -14,8 +14,10 @@ from typing import Any
 from config.constants import ALLOWED_REPOS, IMPLEMENT_MODEL, IMPLEMENT_TIMEOUT_SECONDS
 from config.env import load_project_env
 from models.control_plane import append_agent_run_artifact, create_agent_run, update_agent_run
-from models.task import Task, update_task_status
+from models.task import Task, release_task, update_task_status
 from services.github_ops import ensure_branch, commit_and_push, open_pr
+from services.policy_engine import PolicyEvaluationRequest
+from services.policy_service import evaluate_and_record_policy
 
 load_project_env()
 logger = logging.getLogger(__name__)
@@ -193,6 +195,60 @@ def _persist_task_progress(task: Task, status: str, event_message: str, **fields
     if task.id is None or not task.lease_token:
         return
     update_task_status(task.id, task.lease_token, status, event_message=event_message, **fields)
+
+
+def _release_task_progress(task: Task, status: str, event_message: str, **fields: Any) -> None:
+    """Release a leased task into a waiting state so the loop can resume it later."""
+    if task.id is None or not task.lease_token:
+        return
+    release_task(task.id, task.lease_token, status, event_message=event_message, **fields)
+
+
+def _evaluate_delivery_policy(task: Task) -> tuple[str, str]:
+    """Check whether this task is approved to make a deliverable repo change."""
+    if task.approval_state == "approved":
+        return "allow", "Delivery approval already granted."
+    if task.id is None:
+        return "block", "Delivery actions must be attached to a tracked task."
+
+    result = evaluate_and_record_policy(
+        PolicyEvaluationRequest(
+            task_id=task.id,
+            story_id=task.current_story_id,
+            agent_role="implementer",
+            action_type="git_push",
+            target_repo=task.target_repo,
+            reason="Apply and deliver the selected execution story.",
+        )
+    )
+    return result.decision, result.reason
+
+
+def _build_claude_command(prompt: str, repo_dir: Path) -> list[str]:
+    """Build a safer non-interactive Claude Code command."""
+    return [
+        "claude",
+        "--print",
+        "--permission-mode",
+        "acceptEdits",
+        "--add-dir",
+        str(repo_dir),
+        "-p",
+        prompt,
+    ]
+
+
+def _looks_like_permission_error(stderr_text: str) -> bool:
+    """Detect a likely Claude permission refusal from stderr."""
+    lowered = stderr_text.lower()
+    keywords = (
+        "permission",
+        "approval",
+        "not allowed",
+        "disallowed",
+        "blocked",
+    )
+    return any(keyword in lowered for keyword in keywords)
 
 
 def _open_pr_for_completed_stories(
@@ -392,6 +448,7 @@ def run_implementation(task: Task, research: dict) -> dict:
     run_story = manual_review_story or selected_story
     progress_notes = deepcopy(task.progress_notes_json or [])
     verification_log = deepcopy(task.verification_json or [])
+    branch = task.branch_name
     implementation_run = create_agent_run(
         task_id=task.id,
         story_id=run_story.get("id") if run_story else None,
@@ -415,8 +472,6 @@ def run_implementation(task: Task, research: dict) -> dict:
     )
 
     def _record_run_artifact(artifact_type: str, **details: Any) -> None:
-        if implementation_run is None:
-            return
         append_agent_run_artifact(
             implementation_run.id,
             {
@@ -433,8 +488,6 @@ def run_implementation(task: Task, research: dict) -> dict:
         pr_url: str | None = None,
         error_message: str | None = None,
     ) -> None:
-        if implementation_run is None:
-            return
         update_agent_run(
             implementation_run.id,
             status,
@@ -455,9 +508,9 @@ def run_implementation(task: Task, research: dict) -> dict:
                 "awaiting_manual_verification",
                 branch_name=task.branch_name,
             )
-            _persist_task_progress(
+            _release_task_progress(
                 task,
-                "implementing",
+                "blocked",
                 f"Waiting for manual verification on {manual_review_story.get('id')}.",
                 execution_stories_json=execution_stories,
                 progress_notes_json=task.progress_notes_json or [],
@@ -479,10 +532,9 @@ def run_implementation(task: Task, research: dict) -> dict:
 
         if not selected_story:
             if _all_stories_completed(execution_stories):
-                branch = task.branch_name
                 if not branch:
                     _record_run_artifact(
-                        "error",
+                        "run_error",
                         reason="missing_branch_for_completed_stories",
                     )
                     _finish_run(
@@ -499,7 +551,11 @@ def run_implementation(task: Task, research: dict) -> dict:
                         current_story_id=None,
                         error_message="All stories completed but branch_name is missing",
                     )
-                    return {"error": "All stories completed but branch_name is missing"}
+                    return {
+                        "run_id": implementation_run.id,
+                        "run_key": implementation_run.run_key,
+                        "error": "All stories completed but branch_name is missing",
+                    }
 
                 _record_run_artifact(
                     "pull_request_requested",
@@ -560,7 +616,73 @@ def run_implementation(task: Task, research: dict) -> dict:
                 "error": "No pending execution stories remain",
             }
 
-        # Reuse existing branch for later stories, or create a fresh one for the first story.
+        delivery_decision, delivery_reason = _evaluate_delivery_policy(task)
+        if delivery_decision == "require_approval":
+            _record_run_artifact(
+                "approval_required",
+                story_id=selected_story.get("id"),
+                reason=delivery_reason,
+            )
+            _finish_run(
+                "awaiting_approval",
+                branch_name=task.branch_name,
+                error_message=delivery_reason,
+            )
+            _release_task_progress(
+                task,
+                "awaiting_approval",
+                delivery_reason,
+                execution_stories_json=execution_stories,
+                progress_notes_json=progress_notes,
+                verification_json=verification_log,
+                current_story_id=selected_story.get("id"),
+                branch_name=task.branch_name,
+                approval_state="pending",
+                error_message=delivery_reason,
+            )
+            return {
+                "branch_name": task.branch_name,
+                "execution_stories_json": execution_stories,
+                "progress_notes_json": progress_notes,
+                "verification_json": verification_log,
+                "current_story_id": selected_story.get("id"),
+                "run_id": implementation_run.id,
+                "run_key": implementation_run.run_key,
+                "error": delivery_reason,
+            }
+        if delivery_decision == "block":
+            _record_run_artifact(
+                "delivery_blocked",
+                story_id=selected_story.get("id"),
+                reason=delivery_reason,
+            )
+            _finish_run(
+                "blocked",
+                branch_name=task.branch_name,
+                error_message=delivery_reason,
+            )
+            _release_task_progress(
+                task,
+                "blocked",
+                delivery_reason,
+                execution_stories_json=execution_stories,
+                progress_notes_json=progress_notes,
+                verification_json=verification_log,
+                current_story_id=selected_story.get("id"),
+                branch_name=task.branch_name,
+                error_message=delivery_reason,
+            )
+            return {
+                "branch_name": task.branch_name,
+                "execution_stories_json": execution_stories,
+                "progress_notes_json": progress_notes,
+                "verification_json": verification_log,
+                "current_story_id": selected_story.get("id"),
+                "run_id": implementation_run.id,
+                "run_key": implementation_run.run_key,
+                "error": delivery_reason,
+            }
+
         branch = ensure_branch(repo_dir, task.id or 0, task.title, task.branch_name)
         logger.info("Using branch: %s", branch)
         update_agent_run(
@@ -585,73 +707,16 @@ def run_implementation(task: Task, research: dict) -> dict:
             branch_name=branch,
         )
 
-        # Build prompt for Claude Code
         prompt = _build_claude_prompt(task, research, selected_story, execution_stories)
 
-        # Run Claude Code as a subprocess.
         try:
             result = subprocess.run(
-                [
-                    "claude",
-                    "--print",
-                    "--dangerously-skip-permissions",
-                    "-p", prompt,
-                ],
+                _build_claude_command(prompt, repo_dir),
                 cwd=repo_dir,
                 capture_output=True,
                 text=True,
                 timeout=IMPLEMENT_TIMEOUT_SECONDS,
                 env={**os.environ, "CLAUDE_MODEL": IMPLEMENT_MODEL},
-            )
-
-            if result.returncode != 0:
-                selected_story["status"] = "failed"
-                _record_run_artifact(
-                    "agent_error",
-                    story_id=selected_story.get("id"),
-                    exit_code=result.returncode,
-                    stderr=(result.stderr or "")[-500:],
-                )
-                _finish_run(
-                    "failed",
-                    branch_name=branch,
-                    error_message=f"Claude Code exit code {result.returncode}: {result.stderr[:200]}",
-                )
-                progress_notes.append(
-                    _build_progress_note(
-                        selected_story,
-                        "failed",
-                        f"Claude Code exited with status {result.returncode}.",
-                    )
-                )
-                logger.error("Claude Code failed: %s", result.stderr[:500])
-                _persist_task_progress(
-                    task,
-                    "failed",
-                    f"Claude Code failed during {selected_story.get('id')}.",
-                    execution_stories_json=execution_stories,
-                    progress_notes_json=progress_notes,
-                    verification_json=verification_log,
-                    current_story_id=selected_story.get("id"),
-                    branch_name=branch,
-                    error_message=f"Claude Code exit code {result.returncode}: {result.stderr[:200]}",
-                )
-                return {
-                    "branch_name": branch,
-                    "execution_stories_json": execution_stories,
-                    "progress_notes_json": progress_notes,
-                    "verification_json": verification_log,
-                    "current_story_id": selected_story.get("id"),
-                    "run_id": implementation_run.id,
-                    "run_key": implementation_run.run_key,
-                    "error": f"Claude Code exit code {result.returncode}: {result.stderr[:200]}",
-                }
-
-            claude_output = result.stdout[-2000:]  # Last 2000 chars of output
-            _record_run_artifact(
-                "agent_output",
-                story_id=selected_story.get("id"),
-                output_excerpt=claude_output[-500:],
             )
         except subprocess.TimeoutExpired:
             selected_story["status"] = "failed"
@@ -693,6 +758,100 @@ def run_implementation(task: Task, research: dict) -> dict:
                 "run_key": implementation_run.run_key,
                 "error": f"Claude Code timed out after {_format_timeout(IMPLEMENT_TIMEOUT_SECONDS)}",
             }
+
+        if result.returncode != 0:
+            selected_story["status"] = "failed"
+            stderr_excerpt = (result.stderr or "")[-500:]
+            _record_run_artifact(
+                "agent_error",
+                story_id=selected_story.get("id"),
+                exit_code=result.returncode,
+                stderr=stderr_excerpt,
+            )
+            logger.error("Claude Code failed: %s", stderr_excerpt)
+            permission_error = _looks_like_permission_error(result.stderr or "")
+            if permission_error:
+                blocked_message = "Claude Code stopped because extra permissions were required."
+                _record_run_artifact(
+                    "delivery_blocked",
+                    story_id=selected_story.get("id"),
+                    reason=blocked_message,
+                )
+                _finish_run(
+                    "blocked",
+                    branch_name=branch,
+                    error_message=blocked_message,
+                )
+                progress_notes.append(
+                    _build_progress_note(
+                        selected_story,
+                        "blocked",
+                        blocked_message,
+                    )
+                )
+                _release_task_progress(
+                    task,
+                    "blocked",
+                    f"Claude Code stopped because extra permissions were required during {selected_story.get('id')}.",
+                    execution_stories_json=execution_stories,
+                    progress_notes_json=progress_notes,
+                    verification_json=verification_log,
+                    current_story_id=selected_story.get("id"),
+                    branch_name=branch,
+                    error_message=blocked_message,
+                )
+                return {
+                    "branch_name": branch,
+                    "execution_stories_json": execution_stories,
+                    "progress_notes_json": progress_notes,
+                    "verification_json": verification_log,
+                    "current_story_id": selected_story.get("id"),
+                    "run_id": implementation_run.id,
+                    "run_key": implementation_run.run_key,
+                    "error": blocked_message,
+                }
+
+            error_message = f"Claude Code exit code {result.returncode}: {result.stderr[:200]}"
+            _finish_run(
+                "failed",
+                branch_name=branch,
+                error_message=error_message,
+            )
+            progress_notes.append(
+                _build_progress_note(
+                    selected_story,
+                    "failed",
+                    f"Claude Code exited with status {result.returncode}.",
+                )
+            )
+            _persist_task_progress(
+                task,
+                "failed",
+                f"Claude Code failed during {selected_story.get('id')}.",
+                execution_stories_json=execution_stories,
+                progress_notes_json=progress_notes,
+                verification_json=verification_log,
+                current_story_id=selected_story.get("id"),
+                branch_name=branch,
+                error_message=error_message,
+            )
+            return {
+                "branch_name": branch,
+                "execution_stories_json": execution_stories,
+                "progress_notes_json": progress_notes,
+                "verification_json": verification_log,
+                "current_story_id": selected_story.get("id"),
+                "run_id": implementation_run.id,
+                "run_key": implementation_run.run_key,
+                "error": error_message,
+            }
+
+        claude_output = result.stdout[-2000:]
+        _record_run_artifact(
+            "agent_output",
+            story_id=selected_story.get("id"),
+            output_excerpt=claude_output[-500:],
+        )
 
         verification_results = _run_story_verification(repo_dir, selected_story)
         _record_run_artifact(
@@ -743,7 +902,6 @@ def run_implementation(task: Task, research: dict) -> dict:
                 "error": "Automated verification failed for the selected story",
             }
 
-        # Commit and push
         commit_msg = (
             f"studio: {task.title} [{selected_story.get('id')}]\n\n"
             f"Task #{task.id}\n"
@@ -807,6 +965,11 @@ def run_implementation(task: Task, research: dict) -> dict:
         )
         if _verification_requires_manual_review(verification_results):
             selected_story["status"] = "awaiting_manual_verification"
+            _record_run_artifact(
+                "manual_verification_pending",
+                story_id=selected_story.get("id"),
+                story_title=selected_story.get("title"),
+            )
             _finish_run(
                 "awaiting_manual_verification",
                 branch_name=branch,
@@ -818,9 +981,9 @@ def run_implementation(task: Task, research: dict) -> dict:
                     "Automated work is complete, but manual verification is still required.",
                 )
             )
-            _persist_task_progress(
+            _release_task_progress(
                 task,
-                "implementing",
+                "blocked",
                 f"Waiting for manual verification on {selected_story.get('id')}.",
                 execution_stories_json=execution_stories,
                 progress_notes_json=progress_notes,
@@ -862,10 +1025,10 @@ def run_implementation(task: Task, research: dict) -> dict:
                 "completed",
                 branch_name=branch,
             )
-            _persist_task_progress(
+            _release_task_progress(
                 task,
-                "implementing",
-                f"Completed {selected_story.get('id')}; queued {next_story.get('id')} next.",
+                "queued",
+                f"Completed {selected_story.get('id')}; released {next_story.get('id')} for the next worker pass.",
                 execution_stories_json=execution_stories,
                 progress_notes_json=progress_notes,
                 verification_json=verification_log,
@@ -885,6 +1048,10 @@ def run_implementation(task: Task, research: dict) -> dict:
                 "next_story_id": next_story.get("id"),
             }
 
+        _record_run_artifact(
+            "pull_request_requested",
+            branch_name=branch,
+        )
         result = _open_pr_for_completed_stories(
             task=task,
             research=research,
@@ -915,11 +1082,11 @@ def run_implementation(task: Task, research: dict) -> dict:
         if selected_story and selected_story.get("status") not in {"completed", "awaiting_manual_verification"}:
             selected_story["status"] = "failed"
         error_message = str(exc) or exc.__class__.__name__
-        branch_name = locals().get("branch", task.branch_name)
+        current_story_id = run_story.get("id") if run_story else None
         try:
             _record_run_artifact(
                 "run_error",
-                story_id=run_story.get("id") if run_story else None,
+                story_id=current_story_id,
                 error=error_message,
             )
         except Exception:
@@ -927,7 +1094,7 @@ def run_implementation(task: Task, research: dict) -> dict:
         try:
             _finish_run(
                 "failed",
-                branch_name=branch_name,
+                branch_name=branch,
                 error_message=error_message,
             )
         except Exception:
@@ -939,16 +1106,16 @@ def run_implementation(task: Task, research: dict) -> dict:
             execution_stories_json=execution_stories,
             progress_notes_json=progress_notes,
             verification_json=verification_log,
-            current_story_id=run_story.get("id") if run_story else None,
-            branch_name=branch_name,
+            current_story_id=current_story_id,
+            branch_name=branch,
             error_message=error_message,
         )
         return {
-            "branch_name": branch_name,
+            "branch_name": branch,
             "execution_stories_json": execution_stories,
             "progress_notes_json": progress_notes,
             "verification_json": verification_log,
-            "current_story_id": run_story.get("id") if run_story else None,
+            "current_story_id": current_story_id,
             "run_id": implementation_run.id,
             "run_key": implementation_run.run_key,
             "error": error_message,

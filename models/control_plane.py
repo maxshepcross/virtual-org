@@ -223,6 +223,16 @@ def create_agent_run(
         conn.close()
 
 
+def get_agent_run(run_id: int) -> AgentRun | None:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM agent_runs WHERE id = %s", (run_id,))
+            return _row_to_model(cur.fetchone(), AgentRun, "resume_context_json")
+    finally:
+        conn.close()
+
+
 def update_agent_run(
     run_id: int,
     status: str | None = None,
@@ -684,12 +694,16 @@ def resolve_approval_request(
                 return _row_to_model(row, ApprovalRequest) if row else None
 
             task_id = row["task_id"]
-            task_status = "implementing" if status == "approved" else "blocked"
+            task_status = "queued" if status == "approved" else "blocked"
             cur.execute(
                 """
                 UPDATE tasks
                 SET approval_state = %s,
-                    status = %s
+                    status = %s,
+                    worker_id = NULL,
+                    lease_token = NULL,
+                    lease_expires_at = NULL,
+                    last_heartbeat_at = NULL
                 WHERE id = %s
                 """,
                 (status, task_status, task_id),

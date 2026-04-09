@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from threading import Lock, Thread
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
@@ -25,8 +26,27 @@ from services.briefing_service import generate_briefing
 from services.policy_engine import PolicyEvaluationRequest
 from services.policy_service import evaluate_and_record_policy
 from services.signal_service import SignalInput, record_signal
+from services.task_runner import TaskRunner
 
 app = FastAPI(title="AI Venture Studio Control API", version="0.1.0")
+_worker_run_lock = Lock()
+
+
+def _run_worker_pass(worker_id: str, poll_interval_seconds: int) -> None:
+    """Advance one worker pass in the background so the chief stays responsive."""
+    try:
+        runner = TaskRunner(
+            worker_id=worker_id,
+            poll_interval_seconds=poll_interval_seconds,
+        )
+        app.state.last_worker_result = runner.run_once().__dict__
+    except Exception as exc:  # pragma: no cover - defensive background logging
+        app.state.last_worker_result = {
+            "action": "failed",
+            "message": f"Background worker pass failed: {exc}",
+        }
+    finally:
+        _worker_run_lock.release()
 
 
 class AgentRunCreateRequest(BaseModel):
@@ -225,3 +245,30 @@ def generate_briefing_endpoint(payload: dict, _: None = Depends(require_control_
         delivered_to=payload.get("delivered_to"),
     )
     return briefing.model_dump()
+
+
+@app.post("/v1/worker/run-once", status_code=202)
+def run_worker_once_endpoint(payload: dict | None = None, _: None = Depends(require_control_api_token)) -> dict:
+    payload = payload or {}
+    worker_id = payload.get("worker_id") or "studio-chief"
+    poll_interval_seconds = int(payload.get("poll_interval_seconds") or 5)
+    if not _worker_run_lock.acquire(blocking=False):
+        return {
+            "status": "already_running",
+            "worker_id": worker_id,
+            "last_result": getattr(app.state, "last_worker_result", None),
+        }
+    thread = Thread(
+        target=_run_worker_pass,
+        args=(worker_id, poll_interval_seconds),
+        daemon=True,
+    )
+    try:
+        thread.start()
+    except Exception:
+        _worker_run_lock.release()
+        raise
+    return {
+        "status": "started",
+        "worker_id": worker_id,
+    }

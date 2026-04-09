@@ -197,6 +197,34 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["artifact_summary_json"][0]["type"], "verification")
 
+    @patch("api.app.Thread")
+    @patch("api.app._worker_run_lock")
+    def test_run_worker_once_endpoint_starts_background_pass(self, worker_run_lock, thread_cls) -> None:
+        worker_run_lock.acquire.return_value = True
+
+        response = self.client.post(
+            "/v1/worker/run-once",
+            json={"worker_id": "studio-chief"},
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["status"], "started")
+        thread_cls.return_value.start.assert_called_once()
+
+    @patch("api.app._worker_run_lock")
+    def test_run_worker_once_endpoint_reports_when_pass_is_already_running(self, worker_run_lock) -> None:
+        worker_run_lock.acquire.return_value = False
+
+        response = self.client.post(
+            "/v1/worker/run-once",
+            json={"worker_id": "studio-chief"},
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["status"], "already_running")
+
     def test_control_api_requires_bearer_token(self) -> None:
         response = self.client.get("/v1/attention")
 
