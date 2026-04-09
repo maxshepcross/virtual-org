@@ -35,7 +35,7 @@ Before acting, keep these files in mind:
 6. Run `studio_run_worker_once` when there is queued work that can safely advance. This starts the pass in the background, so do not wait on it like a chat response.
 7. Use the control-plane tools directly when needed:
    - `studio_create_task` to turn a founder instruction into tracked work
-   - `studio_resolve_approval` to approve or deny through the control plane
+   - `studio_pending_approvals` to explain what is waiting for a Slack approval
    - `studio_complete_manual_verification` when human checking is done
    - `studio_requeue_task` when blocked work should be retried
    - `studio_agent_runs` to explain what a worker is doing

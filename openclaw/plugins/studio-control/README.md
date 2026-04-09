@@ -39,7 +39,6 @@ Add the plugin to your OpenClaw gateway config and pass:
 - `studio_task_state`
 - `studio_create_task`
 - `studio_pending_approvals`
-- `studio_resolve_approval`
 - `studio_create_signal`
 - `studio_complete_manual_verification`
 - `studio_requeue_task`
@@ -47,6 +46,8 @@ Add the plugin to your OpenClaw gateway config and pass:
 - `studio_recent_briefings`
 - `studio_generate_briefing`
 - `studio_run_worker_once`
+
+Approval resolution should happen through real Slack interactions, where Slack proves which person clicked approve or deny.
 
 ## Hook behavior
 

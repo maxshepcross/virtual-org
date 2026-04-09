@@ -66,13 +66,21 @@ def get_pending_approvals(limit: int = 50) -> list[ApprovalRequest]:
     return list_pending_approvals(limit=limit)
 
 
-def resolve_approval(approval_id: int, request: ApprovalResolutionRequest) -> ApprovalRequest:
+def resolve_approval(
+    approval_id: int,
+    request: ApprovalResolutionRequest,
+    *,
+    trusted_slack_identity: bool = False,
+) -> ApprovalRequest:
     approval = get_approval_request(approval_id)
     if not approval:
         raise ValueError(f"Approval request {approval_id} was not found.")
 
     if approval.status != "pending":
         return approval
+
+    if not trusted_slack_identity:
+        raise PermissionError("Approval resolution must come from the verified Slack approval flow.")
 
     trusted = _trusted_approvers()
     allow_any_slack_user = "*" in trusted

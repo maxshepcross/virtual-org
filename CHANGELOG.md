@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1 - 2026-04-10
+
+### Changed
+
+- Changed approval resolution so only Slack-verified identities can approve work through the control plane, removing the old generic caller shortcut.
+- Changed the OpenClaw Studio plugin and chief guidance so founder approvals now rely on Slack identity checks instead of a spoofable direct approval tool.
+
+### Fixed
+
+- Fixed final manual verification so the last approved story now closes the task instead of sending it back into the queue.
+
 ## 0.2.0 - 2026-04-09
 
 ### Added

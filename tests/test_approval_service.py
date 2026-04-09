@@ -41,6 +41,7 @@ class ApprovalServiceTests(unittest.TestCase):
                 slack_user_id="U123",
                 resolution="approved",
             ),
+            trusted_slack_identity=True,
         )
 
         self.assertEqual(result.status, "approved")
@@ -62,6 +63,26 @@ class ApprovalServiceTests(unittest.TestCase):
                 6,
                 ApprovalResolutionRequest(
                     slack_user_id="U999",
+                    resolution="approved",
+                ),
+                trusted_slack_identity=True,
+            )
+
+    @patch("services.approval_service.get_approval_request")
+    def test_resolve_rejects_unverified_control_plane_identity(self, get_approval_request) -> None:
+        get_approval_request.return_value = ApprovalRequest(
+            id=10,
+            task_id=8,
+            action_type="git_push",
+            target_summary="Push branch",
+            status="pending",
+        )
+
+        with self.assertRaises(PermissionError):
+            resolve_approval(
+                10,
+                ApprovalResolutionRequest(
+                    slack_user_id="U123",
                     resolution="approved",
                 ),
             )
@@ -98,6 +119,7 @@ class ApprovalServiceTests(unittest.TestCase):
                 slack_user_id="U999",
                 resolution="approved",
             ),
+            trusted_slack_identity=True,
         )
 
         self.assertEqual(result.status, "approved")
