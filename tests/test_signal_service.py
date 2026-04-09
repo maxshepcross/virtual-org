@@ -51,6 +51,7 @@ class SignalServiceTests(unittest.TestCase):
             {
                 "id": 1,
                 "task_id": 7,
+                "agent_run_id": 12,
                 "venture": None,
                 "severity": "high",
                 "summary": "Manual test",
@@ -83,6 +84,7 @@ class SignalServiceTests(unittest.TestCase):
         _, kwargs = create_attention_item.call_args
         self.assertEqual(kwargs["slack_channel_id"], "#task-thread")
         self.assertEqual(kwargs["slack_thread_ts"], "123.456")
+        self.assertEqual(kwargs["agent_run_id"], 12)
 
     @patch("services.signal_service.create_attention_item")
     @patch("services.signal_service.create_signal")
@@ -104,6 +106,7 @@ class SignalServiceTests(unittest.TestCase):
             {
                 "id": 1,
                 "task_id": None,
+                "agent_run_id": None,
                 "venture": None,
                 "severity": "high",
                 "summary": "Manual test",

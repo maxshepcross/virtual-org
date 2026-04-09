@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.9 - 2026-04-09
+
+### Added
+
+- Added `docs/spectre-patterns.md`, a short architecture note on what Puebla should borrow from Harvey's Spectre model and a concrete five-step roadmap for this control plane.
+- Added richer durable run records with stable run keys, trigger metadata, branch and PR fields, Slack routing, artifact summaries, and stronger audit fields across the control-plane schema and models.
+
+### Changed
+
+- Threaded run records through the research loop, implementation loop, control API, approval flow, Slack delivery, and policy-signal routing so one run can be tracked cleanly across the whole system.
+- Changed implementation handoffs so worker-friendly queue releases are preserved while run history still captures approvals, manual checks, pushes, verification, and PR outcomes.
+
+### Fixed
+
+- Fixed upgraded databases so `run_key` values are backfilled and enforced as required instead of staying silently nullable.
+- Fixed implementation failure cleanup so a branch setup error marks the run failed instead of leaving a fake "running" record behind.
+
 ## 0.1.8 - 2026-04-09
 
 ### Added

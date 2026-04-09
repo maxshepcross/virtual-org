@@ -13,6 +13,7 @@ import anthropic
 
 from config.constants import RESEARCH_MODEL, MAX_RESEARCH_TOKENS, ALLOWED_REPOS
 from config.env import load_project_env
+from models.control_plane import append_agent_run_artifact, create_agent_run, update_agent_run
 from models.task import Task, update_task_status
 from services.planning_service import build_planning_context, merge_planning_context
 
@@ -220,6 +221,7 @@ def _search_codebase(repo_dir: Path, keywords: list[str], max_results: int = 20)
 def run_research(task: Task) -> dict:
     """Research a task and return structured findings."""
     client = anthropic.Anthropic()
+    research_run = None
 
     # Search the named codebase only when the repo is explicit and allowed.
     codebase_context = ""
@@ -233,6 +235,25 @@ def run_research(task: Task) -> dict:
             logger.warning("Could not search codebase: %s", e)
             codebase_context = f"Codebase search unavailable: {e}"
 
+    if task.id is not None:
+        research_run = create_agent_run(
+            task_id=task.id,
+            story_id=None,
+            run_kind="research",
+            trigger_source="task_queue",
+            triggered_by=task.requested_by,
+            agent_class="anthropic",
+            agent_role="researcher",
+            repo_name=task.target_repo,
+            status="running",
+            context_json={
+                "task_title": task.title,
+                "category": task.category,
+                "target_repo": task.target_repo,
+            },
+            tool_bundle_json=["anthropic.messages.create"],
+        )
+
     planning_context = build_planning_context(task, client)
     if planning_context.get("task_breakdown"):
         planning_context["task_breakdown"] = _normalize_task_breakdown_result(
@@ -244,25 +265,53 @@ def run_research(task: Task) -> dict:
         prd_markdown=planning_context.get("prd_markdown", ""),
         task_breakdown=planning_context.get("task_breakdown"),
     )
-    response = client.messages.create(
-        model=RESEARCH_MODEL,
-        max_tokens=MAX_RESEARCH_TOKENS,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    research_text = response.content[0].text
-    result = _normalize_research_result(json.loads(_extract_structured_block(research_text)))
-    result = merge_planning_context(result, planning_context)
 
-    if task.id is not None and task.lease_token:
-        first_story = result.get("execution_stories", [])
-        update_task_status(
-            task.id,
-            task.lease_token,
-            "researching",
-            event_message="Research plan refreshed.",
-            research_json=result,
-            execution_stories_json=result.get("execution_stories", []),
-            current_story_id=first_story[0]["id"] if first_story else None,
+    try:
+        response = client.messages.create(
+            model=RESEARCH_MODEL,
+            max_tokens=MAX_RESEARCH_TOKENS,
+            messages=[{"role": "user", "content": prompt}],
         )
+        research_text = response.content[0].text
+        result = _normalize_research_result(json.loads(_extract_structured_block(research_text)))
+        result = merge_planning_context(result, planning_context)
 
-    return result
+        if research_run is not None:
+            append_agent_run_artifact(
+                research_run.id,
+                {
+                    "type": "research_summary",
+                    "summary": result.get("summary", ""),
+                    "estimated_effort": result.get("estimated_effort", ""),
+                    "recommendation": result.get("recommendation", ""),
+                    "execution_story_count": len(result.get("execution_stories", [])),
+                },
+            )
+            update_agent_run(
+                research_run.id,
+                "completed",
+                completed_by="research.py",
+            )
+
+        if task.id is not None and task.lease_token:
+            first_story = result.get("execution_stories", [])
+            update_task_status(
+                task.id,
+                task.lease_token,
+                "researching",
+                event_message="Research plan refreshed.",
+                research_json=result,
+                execution_stories_json=result.get("execution_stories", []),
+                current_story_id=first_story[0]["id"] if first_story else None,
+            )
+
+        return result
+    except Exception as exc:
+        if research_run is not None:
+            update_agent_run(
+                research_run.id,
+                "failed",
+                completed_by="research.py",
+                error_message=str(exc),
+            )
+        raise
