@@ -90,13 +90,23 @@ These control-plane endpoints already exist and are enough to build the first re
   - Founder-facing alerts, failures, and approval-needed items.
 - `GET /v1/approvals/pending`
   - Current unresolved approvals.
+- `GET /v1/tasks`
+  - Task list for the control room and filtered queues.
 - `GET /v1/tasks/{task_id}/state`
   - Full task detail, including attention items, approvals, policy decisions, and agent runs.
+- `GET /v1/agent-runs`
+  - Run list for the timeline, worker monitor, and task drill-down.
 
 ### Write Endpoints
 
+- `POST /v1/tasks`
+  - Create a new task when Paperclip should originate work directly.
 - `POST /v1/worker/run-once`
   - Starts one background worker pass.
+- `POST /v1/tasks/{task_id}/manual-verification/complete`
+  - Continue a task after a human has checked the blocked story.
+- `POST /v1/tasks/{task_id}/requeue`
+  - Requeue a blocked or failed task for another worker pass.
 - `POST /v1/approvals/{approval_id}/resolve`
   - Approve or deny a risky action.
 - `POST /v1/agent-runs`
@@ -108,30 +118,9 @@ These control-plane endpoints already exist and are enough to build the first re
 
 ## API Gaps To Close
 
-Paperclip can become a useful read-only cockpit today, but it still needs a few direct control endpoints before it can fully replace scripts and ad-hoc operations.
+Paperclip now has the main control-room endpoints it needs. The remaining gaps are about polish, live updates, and worker visibility rather than basic operability.
 
-### Needed Next
-
-1. `GET /v1/tasks`
-   - List tasks with filters like status, venture, requested_by, and updated_at.
-   - Paperclip needs this for the main task table.
-
-2. `GET /v1/agent-runs`
-   - List runs with filters like task_id, run_kind, status, trigger_source, and created_at.
-   - Paperclip needs this for the run timeline and worker monitor.
-
-3. `POST /v1/tasks/{task_id}/manual-verification/complete`
-   - This currently exists as a script, not an API endpoint.
-   - Paperclip needs a button for "I checked it, continue."
-
-4. `POST /v1/tasks/{task_id}/requeue`
-   - Paperclip needs a safe retry control for blocked or failed tasks.
-
-5. `POST /v1/tasks`
-   - Only needed if Paperclip should originate tasks directly.
-   - If task creation happens elsewhere, this can wait.
-
-### Nice To Have Later
+### Nice To Have Next
 
 - `GET /v1/workers`
   - Show worker heartbeat, current lease, and last result.

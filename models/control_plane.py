@@ -233,12 +233,56 @@ def get_agent_run(run_id: int) -> AgentRun | None:
         conn.close()
 
 
-def get_agent_run(run_id: int) -> AgentRun | None:
+def list_agent_runs(
+    *,
+    limit: int = 50,
+    task_id: int | None = None,
+    run_kind: str | None = None,
+    status: str | None = None,
+    trigger_source: str | None = None,
+) -> list[AgentRun]:
     conn = _conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM agent_runs WHERE id = %s", (run_id,))
-            return _row_to_model(cur.fetchone(), AgentRun, "resume_context_json")
+            where_parts: list[str] = []
+            params: list[Any] = []
+
+            if task_id is not None:
+                where_parts.append("task_id = %s")
+                params.append(task_id)
+            if run_kind:
+                where_parts.append("run_kind = %s")
+                params.append(run_kind)
+            if status:
+                where_parts.append("status = %s")
+                params.append(status)
+            if trigger_source:
+                where_parts.append("trigger_source = %s")
+                params.append(trigger_source)
+
+            where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+            params.append(limit)
+            cur.execute(
+                f"""
+                SELECT *
+                FROM agent_runs
+                {where_clause}
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+                """,
+                params,
+            )
+            return [
+                _row_to_model(
+                    row,
+                    AgentRun,
+                    "artifact_summary_json",
+                    "context_json",
+                    "tool_bundle_json",
+                    "resume_context_json",
+                )
+                for row in cur.fetchall()
+            ]
     finally:
         conn.close()
 
@@ -483,20 +527,37 @@ def create_attention_item(
         conn.close()
 
 
-def list_attention_items(limit: int = 50, status: str = "open") -> list[AttentionItem]:
+def list_attention_items(
+    limit: int = 50,
+    status: str = "open",
+    venture: str | None = None,
+) -> list[AttentionItem]:
     conn = _conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
-                SELECT *
-                FROM attention_items
-                WHERE status = %s
-                ORDER BY created_at DESC, id DESC
-                LIMIT %s
-                """,
-                (status, limit),
-            )
+            if venture:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM attention_items
+                    WHERE status = %s
+                      AND venture = %s
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT %s
+                    """,
+                    (status, venture, limit),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM attention_items
+                    WHERE status = %s
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT %s
+                    """,
+                    (status, limit),
+                )
             return [
                 _row_to_model(row, AttentionItem)
                 for row in cur.fetchall()
@@ -796,6 +857,41 @@ def create_briefing(scope: str, headline: str, items_json: list[dict[str, Any]],
             )
             conn.commit()
             return _row_to_model(cur.fetchone(), Briefing, "items_json")
+    finally:
+        conn.close()
+
+
+def list_briefings(
+    *,
+    limit: int = 20,
+    scope: str | None = None,
+    delivered_to: str | None = None,
+) -> list[Briefing]:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            filters: list[str] = []
+            params: list[Any] = []
+            if scope:
+                filters.append("scope = %s")
+                params.append(scope)
+            if delivered_to:
+                filters.append("delivered_to = %s")
+                params.append(delivered_to)
+
+            query = """
+                SELECT *
+                FROM briefings
+            """
+            if filters:
+                query += " WHERE " + " AND ".join(filters)
+            query += """
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+            """
+            params.append(limit)
+            cur.execute(query, tuple(params))
+            return [_row_to_model(row, Briefing, "items_json") for row in cur.fetchall()]
     finally:
         conn.close()
 

@@ -134,6 +134,51 @@ class SignalServiceTests(unittest.TestCase):
         self.assertEqual(kwargs["slack_channel_id"], "#virtual-org-chief")
         self.assertIsNone(kwargs["slack_thread_ts"])
 
+    @patch("services.signal_service.create_attention_item")
+    @patch("services.signal_service.create_signal")
+    @patch("services.signal_service.find_recent_signal_by_dedupe_key")
+    @patch("services.signal_service.resolve_slack_route")
+    def test_record_signal_creates_digest_attention_without_slack_route(
+        self,
+        resolve_slack_route,
+        find_recent,
+        create_signal,
+        create_attention_item,
+    ) -> None:
+        find_recent.return_value = None
+        create_signal.return_value = type(
+            "SignalStub",
+            (),
+            {
+                "id": 1,
+                "task_id": None,
+                "agent_run_id": None,
+                "venture": "officely",
+                "severity": "normal",
+                "summary": "Usage is up 20% this week",
+            },
+        )()
+        create_attention_item.return_value = object()
+
+        from services.signal_service import record_signal
+
+        record_signal(
+            SignalInput(
+                source="paperclip",
+                kind="usage_trend",
+                venture="officely",
+                severity="normal",
+                summary="Usage is up 20% this week",
+            )
+        )
+
+        create_attention_item.assert_called_once()
+        _, kwargs = create_attention_item.call_args
+        self.assertEqual(kwargs["bucket"], "digest")
+        self.assertIsNone(kwargs["slack_channel_id"])
+        self.assertIsNone(kwargs["slack_thread_ts"])
+        resolve_slack_route.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

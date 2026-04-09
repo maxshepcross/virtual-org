@@ -12,9 +12,12 @@ from models.control_plane import (
     append_agent_run_artifact,
     create_agent_run,
     get_task_control_state,
+    list_agent_runs,
     list_attention_items,
+    list_briefings,
     update_agent_run,
 )
+from models.task import complete_manual_verification, create_task, list_tasks, requeue_task
 from services.approval_service import (
     ApprovalCreateRequest,
     ApprovalResolutionRequest,
@@ -23,6 +26,7 @@ from services.approval_service import (
     resolve_approval,
 )
 from services.briefing_service import generate_briefing
+from services.importance_service import BusinessSignalInput, record_business_signal
 from services.policy_engine import PolicyEvaluationRequest
 from services.policy_service import evaluate_and_record_policy
 from services.signal_service import SignalInput, record_signal
@@ -90,6 +94,27 @@ class AgentRunArtifactRequest(BaseModel):
     artifact: dict
 
 
+class TaskCreateRequest(BaseModel):
+    idea_id: int | None = None
+    title: str
+    description: str
+    category: str
+    target_repo: str | None = None
+    venture: str | None = None
+    requested_by: str | None = None
+    slack_channel_id: str | None = None
+    slack_thread_ts: str | None = None
+
+
+class ManualVerificationCompleteRequest(BaseModel):
+    story_id: str | None = None
+    note: str = "Manual verification completed."
+
+
+class TaskRequeueRequest(BaseModel):
+    note: str = "Task requeued from Paperclip."
+
+
 def require_control_api_token(authorization: str | None = Header(default=None)) -> None:
     expected_token = os.getenv("CONTROL_API_TOKEN", "").strip()
     if not expected_token:
@@ -118,10 +143,48 @@ def create_signal_endpoint(payload: SignalInput, _: None = Depends(require_contr
     }
 
 
+@app.post("/v1/intake/business-signals", status_code=201)
+def create_business_signal_endpoint(payload: BusinessSignalInput, _: None = Depends(require_control_api_token)) -> dict:
+    result = record_business_signal(payload)
+    return {
+        "decision": result["decision"],
+        "signal": result["signal"].model_dump() if result["signal"] else None,
+        "attention_item": result["attention_item"].model_dump() if result["attention_item"] else None,
+        "deduped": result["deduped"],
+    }
+
+
 @app.get("/v1/attention")
-def list_attention_endpoint(limit: int = 50, _: None = Depends(require_control_api_token)) -> dict[str, list[dict]]:
-    items = list_attention_items(limit=limit)
+def list_attention_endpoint(
+    limit: int = 50,
+    venture: str | None = None,
+    _: None = Depends(require_control_api_token),
+) -> dict[str, list[dict]]:
+    items = list_attention_items(limit=limit, venture=venture)
     return {"items": [item.model_dump() for item in items]}
+
+
+@app.get("/v1/tasks")
+def list_tasks_endpoint(
+    limit: int = 50,
+    status: str | None = None,
+    venture: str | None = None,
+    requested_by: str | None = None,
+    _: None = Depends(require_control_api_token),
+) -> dict[str, list[dict]]:
+    items = list_tasks(
+        limit=limit,
+        status=status,
+        venture=venture,
+        requested_by=requested_by,
+    )
+    return {"items": [item.model_dump() for item in items]}
+
+
+@app.post("/v1/tasks", status_code=201)
+def create_task_endpoint(payload: TaskCreateRequest, _: None = Depends(require_control_api_token)) -> dict:
+    task = create_task(**payload.model_dump())
+    return task.model_dump()
 
 
 @app.post("/v1/policy/evaluate")
@@ -172,6 +235,55 @@ def task_state_endpoint(task_id: int, _: None = Depends(require_control_api_toke
         "policy_decisions": [item.model_dump() for item in state["policy_decisions"]],
         "agent_runs": [item.model_dump() for item in state["agent_runs"]],
     }
+
+
+@app.post("/v1/tasks/{task_id}/manual-verification/complete")
+def complete_manual_verification_endpoint(
+    task_id: int,
+    payload: ManualVerificationCompleteRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    try:
+        task = complete_manual_verification(
+            task_id=task_id,
+            story_id=payload.story_id,
+            note=payload.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return task.model_dump()
+
+
+@app.post("/v1/tasks/{task_id}/requeue")
+def requeue_task_endpoint(
+    task_id: int,
+    payload: TaskRequeueRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    try:
+        task = requeue_task(task_id, note=payload.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return task.model_dump()
+
+
+@app.get("/v1/agent-runs")
+def list_agent_runs_endpoint(
+    limit: int = 50,
+    task_id: int | None = None,
+    run_kind: str | None = None,
+    status: str | None = None,
+    trigger_source: str | None = None,
+    _: None = Depends(require_control_api_token),
+) -> dict[str, list[dict]]:
+    items = list_agent_runs(
+        limit=limit,
+        task_id=task_id,
+        run_kind=run_kind,
+        status=status,
+        trigger_source=trigger_source,
+    )
+    return {"items": [item.model_dump() for item in items]}
 
 
 @app.post("/v1/agent-runs", status_code=201)
@@ -245,6 +357,21 @@ def generate_briefing_endpoint(payload: dict, _: None = Depends(require_control_
         delivered_to=payload.get("delivered_to"),
     )
     return briefing.model_dump()
+
+
+@app.get("/v1/briefings")
+def list_briefings_endpoint(
+    limit: int = 20,
+    scope: str | None = None,
+    delivered_to: str | None = None,
+    _: None = Depends(require_control_api_token),
+) -> dict[str, list[dict]]:
+    items = list_briefings(
+        limit=limit,
+        scope=scope,
+        delivered_to=delivered_to,
+    )
+    return {"items": [item.model_dump() for item in items]}
 
 
 @app.post("/v1/worker/run-once", status_code=202)
