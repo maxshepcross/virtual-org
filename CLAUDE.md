@@ -21,6 +21,7 @@ It is a studio operations repo, not the default product repo. Its job is to coor
 - `implement.py` to execute approved changes in an explicit target repo
 - `config/` for model choices, timing defaults, environment loading, the explicit repo allowlist, and studio policy files
 - `models/task.py` for the Postgres-backed task queue, leases, heartbeats, event log, and per-story execution state
+- `models/knowledge.py` for reusable workflow recipes and shared memory entries that preserve useful prompts, plans, and decisions
 - `services/github_ops.py` for branch creation and PR opening
 - `prompts/` for the structured research, PRD, and task-breakdown prompt templates
 - `scripts/setup_db.py` for the minimal task database schema

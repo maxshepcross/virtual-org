@@ -19,6 +19,7 @@ It is for studio-wide task routing, research, implementation handoff, and repo s
 - `implement.py` runs approved work in an explicit target repo and opens a PR.
 - `config/` holds shared settings such as model names, timeouts, env loading, the repo allowlist, and studio policy files.
 - `models/task.py` stores queued task state in Postgres, including leases, heartbeats, event history, and per-story execution state.
+- `models/knowledge.py` stores reusable workflow recipes and shared memory entries for prompts, plans, and decisions.
 - `services/github_ops.py` contains guarded branch, commit, push, and PR helpers.
 - `prompts/` defines the research, PRD, and task-breakdown prompt formats.
 - `scripts/setup_db.py` creates the minimal task database schema.
