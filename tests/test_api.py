@@ -7,6 +7,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from models.control_plane import AgentRun, ApprovalRequest, AttentionItem, Briefing, Signal
+from models.knowledge import MemoryEntry, WorkflowRecipe
 from models.task import Task
 
 
@@ -465,6 +466,141 @@ class ApiTests(unittest.TestCase):
         response = self.client.get("/v1/attention", headers={"Authorization": "Bearer wrong"})
 
         self.assertEqual(response.status_code, 401)
+
+    @patch("api.app.create_workflow_recipe")
+    def test_create_workflow_endpoint_returns_saved_recipe(self, create_workflow_recipe_mock) -> None:
+        create_workflow_recipe_mock.return_value = WorkflowRecipe(
+            slug="founder-brief",
+            title="Founder brief",
+            summary="Turn notes into a brief.",
+            category="ops",
+            task_title_template="Write brief",
+            task_description_template="{request}",
+        )
+
+        response = self.client.post(
+            "/v1/workflows",
+            json={
+                "title": "Founder brief",
+                "summary": "Turn notes into a brief.",
+                "category": "ops",
+            },
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["slug"], "founder-brief")
+
+    @patch("api.app.create_workflow_recipe")
+    def test_create_workflow_endpoint_returns_bad_request_for_invalid_recipe(self, create_workflow_recipe_mock) -> None:
+        create_workflow_recipe_mock.side_effect = ValueError("task_title_template is not a valid template")
+
+        response = self.client.post(
+            "/v1/workflows",
+            json={
+                "title": "Founder brief",
+                "summary": "Turn notes into a brief.",
+                "category": "ops",
+                "task_title_template": "{request",
+            },
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("valid template", response.json()["detail"])
+
+    @patch("api.app.create_task_from_workflow_recipe")
+    def test_create_task_from_workflow_endpoint_returns_task(self, create_task_from_workflow_recipe_mock) -> None:
+        create_task_from_workflow_recipe_mock.return_value = Task(
+            id=14,
+            title="Write founder brief",
+            description="Use the latest notes.",
+            category="ops",
+        )
+
+        response = self.client.post(
+            "/v1/workflows/founder-brief/tasks",
+            json={"request": "Use the latest notes."},
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["id"], 14)
+        self.assertEqual(response.json()["title"], "Write founder brief")
+
+    @patch("api.app.upsert_memory_entry")
+    def test_create_memory_endpoint_returns_saved_entry(self, upsert_memory_entry_mock) -> None:
+        upsert_memory_entry_mock.return_value = MemoryEntry(
+            kind="decision",
+            title="Use shared memory",
+            body="Save the final plan after research.",
+            source_key="task:1:research",
+        )
+
+        response = self.client.post(
+            "/v1/memory",
+            json={
+                "kind": "decision",
+                "title": "Use shared memory",
+                "body": "Save the final plan after research.",
+                "source_key": "task:1:research",
+            },
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["kind"], "decision")
+        self.assertEqual(response.json()["source_key"], "task:1:research")
+
+    @patch("api.app.upsert_memory_entry")
+    def test_create_memory_endpoint_returns_bad_request_for_invalid_memory(self, upsert_memory_entry_mock) -> None:
+        upsert_memory_entry_mock.side_effect = ValueError("body cannot exceed 4000 characters.")
+
+        response = self.client.post(
+            "/v1/memory",
+            json={
+                "kind": "decision",
+                "title": "Use shared memory",
+                "body": "x" * 4001,
+            },
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("body cannot exceed", response.json()["detail"])
+
+    @patch("api.app.list_workflow_recipes")
+    @patch("api.app.list_memory_entries")
+    def test_list_workflow_and_memory_endpoints_return_items(
+        self,
+        list_memory_entries_mock,
+        list_workflow_recipes_mock,
+    ) -> None:
+        list_workflow_recipes_mock.return_value = [
+            WorkflowRecipe(
+                slug="founder-brief",
+                title="Founder brief",
+                summary="Turn notes into a brief.",
+                category="ops",
+                task_title_template="Write brief",
+                task_description_template="{request}",
+            )
+        ]
+        list_memory_entries_mock.return_value = [
+            MemoryEntry(
+                kind="plan",
+                title="Brief template",
+                body="Keep it concise.",
+            )
+        ]
+
+        workflows_response = self.client.get("/v1/workflows", headers=self.headers)
+        memory_response = self.client.get("/v1/memory", headers=self.headers)
+
+        self.assertEqual(workflows_response.status_code, 200)
+        self.assertEqual(memory_response.status_code, 200)
+        self.assertEqual(workflows_response.json()["items"][0]["slug"], "founder-brief")
+        self.assertEqual(memory_response.json()["items"][0]["title"], "Brief template")
 
 
 if __name__ == "__main__":

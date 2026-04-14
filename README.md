@@ -21,6 +21,25 @@ Use it for studio-wide automation, task routing, repo handoff rules, and shared 
 - `scripts/setup_db.py` for creating the task database schema
 - `tests/` for regression coverage around env loading, timeouts, branch creation, and research prompt handling
 
+## Reusable Workflows And Shared Memory
+
+This repo now has two simple durability layers so good work is not lost:
+
+- Workflow recipes: saved task templates you can run again later
+- Memory entries: prompts, plans, and decisions worth keeping
+
+Why this matters:
+
+- When something works once, you can save it as a recipe instead of recreating it from scratch.
+- Research now pulls in relevant saved recipes and memory automatically when it plans a new task.
+- Research also saves a compact plan and decision record back into shared memory, so useful thinking does not disappear into chat history.
+
+Fastest path to value:
+
+1. Save a workflow recipe once.
+2. Start a new task from that recipe with a short request.
+3. Let research reuse the saved context automatically.
+
 ## What Does Not Live Here
 
 - Product feature work by default
@@ -71,6 +90,42 @@ The API listens on `127.0.0.1:8080` by default and exposes a simple health check
 
 ```text
 http://127.0.0.1:8080/health
+```
+
+Useful reusable-workflow endpoints:
+
+- `POST /v1/workflows` saves or updates a reusable workflow recipe.
+- `GET /v1/workflows` lists saved recipes.
+- `POST /v1/workflows/{slug}/tasks` creates a new queued task from a saved recipe.
+- `POST /v1/memory` saves a prompt, plan, or decision entry.
+- `GET /v1/memory` lists saved memory entries.
+
+Example: save a reusable workflow recipe
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/workflows \
+  -H "Authorization: Bearer $CONTROL_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "founder-brief",
+    "title": "Founder brief",
+    "summary": "Turn rough notes into a short founder-ready brief.",
+    "category": "ops",
+    "task_title_template": "Write founder brief for {topic}",
+    "task_description_template": "Create a concise brief for:\n{request}"
+  }'
+```
+
+Example: create a task from that recipe
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/workflows/founder-brief/tasks \
+  -H "Authorization: Bearer $CONTROL_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "request": "Summarize the latest customer calls into one page.",
+    "variables": {"topic": "customer calls"}
+  }'
 ```
 
 ## Keep The Control API Running 24/7

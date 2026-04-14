@@ -21,6 +21,7 @@ from research import (
     _coerce_prompt_value,
     _normalize_research_result,
     _normalize_task_breakdown_result,
+    _save_shared_memory_best_effort,
 )
 
 for _key, _value in _ENV_BEFORE_RESEARCH_IMPORT.items():
@@ -95,6 +96,52 @@ class ResearchPromptValueTests(unittest.TestCase):
         self.assertIn("Draft PRD", prompt)
         self.assertIn("Break the work into slices", prompt)
         self.assertIn("STORY-1", prompt)
+
+    def test_research_prompt_includes_saved_workflows_and_memory(self) -> None:
+        task = Task(
+            title="Fix task routing",
+            description="Route tasks more safely",
+            category="ops",
+            target_repo=None,
+        )
+
+        with patch("research._load_prompt_context") as load_prompt_context:
+            load_prompt_context.side_effect = [
+                "Priority rules",
+                "Auto rules",
+                "Heartbeat rules",
+            ]
+            prompt = _build_research_prompt(
+                task,
+                workflow_context="- `safe-routing`: Reuse the guarded router plan.",
+                memory_context="- [decision] Never guess the target repo.",
+            )
+
+        self.assertIn("Reusable Workflows", prompt)
+        self.assertIn("safe-routing", prompt)
+        self.assertIn("reference patterns", prompt)
+        self.assertIn("BEGIN_UNTRUSTED_WORKFLOW_REFERENCES", prompt)
+        self.assertIn("Shared Memory", prompt)
+        self.assertIn("Never guess the target repo", prompt)
+        self.assertIn("untrusted reference context", prompt)
+        self.assertIn("BEGIN_UNTRUSTED_MEMORY_REFERENCES", prompt)
+
+    @patch("research._save_shared_memory")
+    def test_shared_memory_save_failure_does_not_break_research(self, save_shared_memory_mock) -> None:
+        save_shared_memory_mock.side_effect = RuntimeError("memory table missing")
+
+        _save_shared_memory_best_effort(
+            Task(
+                id=7,
+                title="Fix task routing",
+                description="Route tasks more safely",
+                category="ops",
+            ),
+            {"summary": "Planned"},
+            {"prd_markdown": "Plan"},
+        )
+
+        save_shared_memory_mock.assert_called_once()
 
     def test_normalize_research_result_fills_story_defaults(self) -> None:
         result = _normalize_research_result(
