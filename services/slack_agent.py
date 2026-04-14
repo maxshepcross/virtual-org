@@ -8,6 +8,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from threading import Thread
 from typing import Any
 
 import httpx
@@ -230,7 +231,7 @@ def _run_command(
         return SlackCommandResult(_resolve_approval_text(text.removeprefix("deny ").strip(), "denied", slack_user_id))
 
     if raw_text and slack_channel_id and is_openclaw_chat_configured():
-        return _openclaw_chat_result(
+        return _start_openclaw_chat_result(
             raw_text,
             slack_user_id=slack_user_id,
             slack_channel_id=slack_channel_id,
@@ -254,22 +255,47 @@ def _run_command(
     )
 
 
-def _openclaw_chat_result(
+def _start_openclaw_chat_result(
     raw_text: str,
     *,
     slack_user_id: str,
     slack_channel_id: str,
     slack_thread_ts: str | None,
 ) -> SlackCommandResult:
+    Thread(
+        target=_post_openclaw_chat_result,
+        kwargs={
+            "raw_text": raw_text,
+            "slack_user_id": slack_user_id,
+            "slack_channel_id": slack_channel_id,
+            "slack_thread_ts": slack_thread_ts,
+        },
+        daemon=True,
+    ).start()
+    return SlackCommandResult(
+        "I’m handing that to OpenClaw now. I’ll post the answer back in this thread.",
+        title="OpenClaw is thinking",
+    )
+
+
+def _post_openclaw_chat_result(
+    raw_text: str,
+    *,
+    slack_user_id: str,
+    slack_channel_id: str,
+    slack_thread_ts: str | None,
+) -> None:
     session_key = f"slack:{slack_channel_id}:{slack_thread_ts or 'root'}"
+    client = SlackApiClient()
     try:
         response = send_openclaw_chat_message(
             raw_text,
             session_key=session_key,
             slack_user_id=slack_user_id,
+            timeout_seconds=float(os.getenv("OPENCLAW_CHAT_TIMEOUT_SECONDS", "300")),
         )
     except (OpenClawBridgeError, httpx.HTTPError) as exc:
-        return SlackCommandResult(
+        text = (
             "\n".join(
                 [
                     "I tried to hand that to OpenClaw, but the OpenClaw gateway did not answer.",
@@ -283,9 +309,14 @@ def _openclaw_chat_result(
                     ),
                 ]
             ),
-            title="OpenClaw unavailable",
         )
-    return SlackCommandResult(response.text, title="OpenClaw")
+    else:
+        text = response.text
+
+    try:
+        client.post_message(channel=slack_channel_id, thread_ts=slack_thread_ts, text=text)
+    finally:
+        client.close()
 
 
 def _help_text() -> str:

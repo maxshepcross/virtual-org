@@ -117,15 +117,14 @@ class SlackAgentTests(unittest.TestCase):
         self.assertEqual(create_task.call_args.kwargs["slack_channel_id"], "C123")
         self.assertEqual(create_task.call_args.kwargs["slack_thread_ts"], "111.222")
 
-    @patch("services.slack_agent.send_openclaw_chat_message")
+    @patch("services.slack_agent.Thread")
     @patch("services.slack_agent.is_openclaw_chat_configured")
     def test_run_command_forwards_freeform_message_to_openclaw_when_configured(
         self,
         is_openclaw_chat_configured,
-        send_openclaw_chat_message,
+        thread_cls,
     ) -> None:
         is_openclaw_chat_configured.return_value = True
-        send_openclaw_chat_message.return_value = type("OpenClawResult", (), {"text": "OpenClaw answered"})()
 
         result = _run_command(
             "can you investigate failed tasks?",
@@ -135,12 +134,9 @@ class SlackAgentTests(unittest.TestCase):
             slack_thread_ts="111.222",
         )
 
-        self.assertEqual(result.text, "OpenClaw answered")
-        send_openclaw_chat_message.assert_called_once_with(
-            "Can you investigate failed tasks?",
-            session_key="slack:C123:111.222",
-            slack_user_id="U123",
-        )
+        self.assertIn("I’m handing that to OpenClaw now.", result.text)
+        thread_cls.assert_called_once()
+        thread_cls.return_value.start.assert_called_once()
 
     @patch("services.slack_agent.SlackApiClient")
     @patch("services.slack_agent.get_approval_request")
