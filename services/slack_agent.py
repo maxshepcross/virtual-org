@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from models.control_plane import get_approval_request, get_task_control_state, list_attention_items
+from models.task import create_task
 from services.approval_service import ApprovalResolutionRequest, get_pending_approvals, resolve_approval
 from services.briefing_service import generate_briefing
 from services.slack_api import SlackApiClient
@@ -169,7 +170,13 @@ def _handle_user_message(event: dict[str, Any]) -> None:
         except Exception:
             pass
 
-        result = _run_command(normalized_text, slack_user_id=user_id)
+        result = _run_command(
+            normalized_text,
+            slack_user_id=user_id,
+            raw_text=raw_text,
+            slack_channel_id=channel_id,
+            slack_thread_ts=thread_ts,
+        )
         if result.title:
             try:
                 client.set_title(channel_id=channel_id, thread_ts=thread_ts, title=result.title[:80])
@@ -180,12 +187,22 @@ def _handle_user_message(event: dict[str, Any]) -> None:
         client.close()
 
 
-def _run_command(text: str, *, slack_user_id: str) -> SlackCommandResult:
+def _run_command(
+    text: str,
+    *,
+    slack_user_id: str,
+    raw_text: str | None = None,
+    slack_channel_id: str | None = None,
+    slack_thread_ts: str | None = None,
+) -> SlackCommandResult:
     if text in {"help", "what can you do", "what can you do?"}:
         return SlackCommandResult(_help_text(), title="Available commands")
 
     if text in {"show approvals", "approvals", "pending approvals"}:
         return SlackCommandResult(_pending_approvals_text(), title="Pending approvals")
+
+    if text in {"show attention", "attention", "alerts", "show alerts"}:
+        return SlackCommandResult(_attention_items_text(), title="Attention queue")
 
     if text in {"what is blocked", "what is blocked?", "blocked", "show blockers"}:
         return SlackCommandResult(_blocked_items_text(), title="Blocked right now")
@@ -205,6 +222,17 @@ def _run_command(text: str, *, slack_user_id: str) -> SlackCommandResult:
     if text.startswith("deny "):
         return SlackCommandResult(_resolve_approval_text(text.removeprefix("deny ").strip(), "denied", slack_user_id))
 
+    if raw_text and slack_channel_id:
+        return SlackCommandResult(
+            _create_founder_request_text(
+                raw_text,
+                slack_user_id=slack_user_id,
+                slack_channel_id=slack_channel_id,
+                slack_thread_ts=slack_thread_ts,
+            ),
+            title="Queued founder request",
+        )
+
     return SlackCommandResult(
         "I did not understand that yet.\n\n" + _help_text(),
         title="Try one of these",
@@ -219,6 +247,7 @@ def _help_text() -> str:
             "Try one of these:",
             "- `what is blocked`",
             "- `show approvals`",
+            "- `show attention`",
             "- `task 123`",
             "- `daily briefing`",
             "- `run one worker pass`",
@@ -235,6 +264,22 @@ def _pending_approvals_text() -> str:
     lines = ["Pending approvals:"]
     for approval in approvals:
         lines.append(f"- #{approval.id} task {approval.task_id}: {approval.action_type} -> {approval.target_summary}")
+    return "\n".join(lines)
+
+
+def _attention_items_text() -> str:
+    attention_items = list_attention_items(limit=10)
+    if not attention_items:
+        return "There are no open attention items."
+
+    lines = ["Open attention items:"]
+    for item in attention_items:
+        task_part = f" task {item.task_id}" if item.task_id is not None else ""
+        venture_part = f" / {item.venture}" if item.venture else ""
+        lines.append(
+            f"- #{item.id} [{item.severity.upper()}]{task_part}{venture_part}: "
+            f"{item.headline} -> {item.recommended_action}"
+        )
     return "\n".join(lines)
 
 
@@ -274,6 +319,34 @@ def _briefing_text(scope: str) -> str:
 def _run_worker_text() -> str:
     result = TaskRunner(worker_id="slack-agent").run_once()
     return result.message
+
+
+def _create_founder_request_text(
+    raw_text: str,
+    *,
+    slack_user_id: str,
+    slack_channel_id: str,
+    slack_thread_ts: str | None,
+) -> str:
+    clean_text = _normalize_user_text(raw_text)
+    title = clean_text[:80] or "Founder request from Slack"
+    task = create_task(
+        idea_id=None,
+        title=f"Slack founder request: {title}",
+        description=raw_text.strip(),
+        category="founder_request",
+        venture="virtual-org",
+        requested_by=f"slack:{slack_user_id}",
+        slack_channel_id=slack_channel_id,
+        slack_thread_ts=slack_thread_ts,
+    )
+    return "\n".join(
+        [
+            f"I queued that for OpenClaw as task {task.id}.",
+            "It is now in the control plane with this Slack thread attached.",
+            "Say `run one worker pass` if you want to start processing the next queued task now.",
+        ]
+    )
 
 
 def _task_state_text(task_id_text: str) -> str:

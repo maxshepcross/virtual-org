@@ -61,6 +61,24 @@ class SlackAgentTests(unittest.TestCase):
         self.assertIn("Pending approvals:", result.text)
         self.assertIn("High-priority alerts:", result.text)
 
+    @patch("services.slack_agent.list_attention_items")
+    def test_run_command_reports_attention_queue(self, list_attention_items) -> None:
+        list_attention_items.return_value = [
+            AttentionItem(
+                id=7,
+                task_id=9,
+                bucket="notify",
+                severity="high",
+                headline="Task failed",
+                recommended_action="Review it.",
+            )
+        ]
+
+        result = _run_command("show attention", slack_user_id="U123")
+
+        self.assertIn("Open attention items:", result.text)
+        self.assertIn("#7 [HIGH] task 9: Task failed -> Review it.", result.text)
+
     @patch("services.slack_agent.get_task_control_state")
     def test_run_command_formats_task_summary(self, get_task_control_state) -> None:
         get_task_control_state.return_value = {
@@ -75,6 +93,29 @@ class SlackAgentTests(unittest.TestCase):
 
         self.assertIn("Task 12: Fix bug", result.text)
         self.assertIn("Status: awaiting_approval", result.text)
+
+    @patch("services.slack_agent.create_task")
+    def test_run_command_queues_freeform_founder_request(self, create_task) -> None:
+        create_task.return_value = Task(
+            id=44,
+            title="Slack founder request: can you investigate failed tasks",
+            description="Can you investigate failed tasks?",
+            category="founder_request",
+        )
+
+        result = _run_command(
+            "can you investigate failed tasks?",
+            slack_user_id="U123",
+            raw_text="Can you investigate failed tasks?",
+            slack_channel_id="C123",
+            slack_thread_ts="111.222",
+        )
+
+        self.assertIn("I queued that for OpenClaw as task 44.", result.text)
+        create_task.assert_called_once()
+        self.assertEqual(create_task.call_args.kwargs["category"], "founder_request")
+        self.assertEqual(create_task.call_args.kwargs["slack_channel_id"], "C123")
+        self.assertEqual(create_task.call_args.kwargs["slack_thread_ts"], "111.222")
 
     @patch("services.slack_agent.SlackApiClient")
     @patch("services.slack_agent.get_approval_request")
