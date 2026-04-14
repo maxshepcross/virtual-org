@@ -45,7 +45,7 @@ def send_openclaw_chat_message(
     headers = {
         "Content-Type": "application/json",
         "x-openclaw-session-key": session_key,
-        "x-openclaw-message-channel": "slack",
+        "x-openclaw-message-channel": "slack-control-bridge",
         "x-openclaw-slack-user-id": slack_user_id,
     }
     if token:

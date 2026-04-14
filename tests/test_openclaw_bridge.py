@@ -33,6 +33,7 @@ class OpenClawBridgeTests(unittest.TestCase):
         _, kwargs = post.call_args
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-token")
         self.assertEqual(kwargs["headers"]["x-openclaw-session-key"], "slack:C123:111.222")
+        self.assertEqual(kwargs["headers"]["x-openclaw-message-channel"], "slack-control-bridge")
         self.assertEqual(kwargs["json"]["messages"][0]["content"], "What is blocked?")
 
 

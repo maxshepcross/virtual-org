@@ -292,7 +292,7 @@ def _post_openclaw_chat_result(
             raw_text,
             session_key=session_key,
             slack_user_id=slack_user_id,
-            timeout_seconds=float(os.getenv("OPENCLAW_CHAT_TIMEOUT_SECONDS", "300")),
+            timeout_seconds=float(os.getenv("OPENCLAW_CHAT_TIMEOUT_SECONDS", "45")),
         )
     except (OpenClawBridgeError, httpx.HTTPError) as exc:
         text = (
