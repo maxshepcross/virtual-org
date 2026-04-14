@@ -7,6 +7,9 @@ This is the shortest path to getting the new Slack agent live.
 Slack becomes the chat and approval surface.
 The control plane and OpenClaw still keep the real logic, safety rules, and state.
 
+For Slack to feel like OpenClaw, the API must also be able to call OpenClaw's Gateway chat endpoint.
+If `OPENCLAW_CHAT_BASE_URL` is not configured, Slack falls back to the smaller control-plane command mode.
+
 ## Before you start
 
 You need:
@@ -36,6 +39,8 @@ Add these values on the server:
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_SIGNING_SECRET=...
 SLACK_APPROVER_IDS=U12345,U67890
+OPENCLAW_CHAT_BASE_URL=http://127.0.0.1:18789/v1
+OPENCLAW_CHAT_MODEL=openclaw/default
 ```
 
 If you want only named people to approve risky actions, keep `SLACK_APPROVER_IDS` specific.

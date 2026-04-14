@@ -10,8 +10,15 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
+
 from models.control_plane import get_approval_request, get_task_control_state, list_attention_items
 from models.task import create_task
+from services.openclaw_bridge import (
+    OpenClawBridgeError,
+    is_openclaw_chat_configured,
+    send_openclaw_chat_message,
+)
 from services.approval_service import ApprovalResolutionRequest, get_pending_approvals, resolve_approval
 from services.briefing_service import generate_briefing
 from services.slack_api import SlackApiClient
@@ -222,6 +229,14 @@ def _run_command(
     if text.startswith("deny "):
         return SlackCommandResult(_resolve_approval_text(text.removeprefix("deny ").strip(), "denied", slack_user_id))
 
+    if raw_text and slack_channel_id and is_openclaw_chat_configured():
+        return _openclaw_chat_result(
+            raw_text,
+            slack_user_id=slack_user_id,
+            slack_channel_id=slack_channel_id,
+            slack_thread_ts=slack_thread_ts,
+        )
+
     if raw_text and slack_channel_id:
         return SlackCommandResult(
             _create_founder_request_text(
@@ -237,6 +252,40 @@ def _run_command(
         "I did not understand that yet.\n\n" + _help_text(),
         title="Try one of these",
     )
+
+
+def _openclaw_chat_result(
+    raw_text: str,
+    *,
+    slack_user_id: str,
+    slack_channel_id: str,
+    slack_thread_ts: str | None,
+) -> SlackCommandResult:
+    session_key = f"slack:{slack_channel_id}:{slack_thread_ts or 'root'}"
+    try:
+        response = send_openclaw_chat_message(
+            raw_text,
+            session_key=session_key,
+            slack_user_id=slack_user_id,
+        )
+    except (OpenClawBridgeError, httpx.HTTPError) as exc:
+        return SlackCommandResult(
+            "\n".join(
+                [
+                    "I tried to hand that to OpenClaw, but the OpenClaw gateway did not answer.",
+                    f"Error: {str(exc)[:300]}",
+                    "",
+                    _create_founder_request_text(
+                        raw_text,
+                        slack_user_id=slack_user_id,
+                        slack_channel_id=slack_channel_id,
+                        slack_thread_ts=slack_thread_ts,
+                    ),
+                ]
+            ),
+            title="OpenClaw unavailable",
+        )
+    return SlackCommandResult(response.text, title="OpenClaw")
 
 
 def _help_text() -> str:
