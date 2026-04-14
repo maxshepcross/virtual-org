@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.2 - 2026-04-14
+
+### Added
+
+- Added reusable workflow recipes so repeatable founder and studio tasks can be saved once and started again from a short request.
+- Added shared memory entries for prompts, plans, and decisions so useful research context can carry forward into later task planning.
+- Added control API endpoints for saving recipes, creating tasks from recipes, and listing or saving shared memory.
+- Added schema support and regression tests for workflow recipes, shared memory, template validation, bounded memory entries, and safe prompt reuse.
+
+### Changed
+
+- Changed research planning so it can include relevant saved recipes and scoped memory as untrusted reference context when planning a task.
+- Changed saved-context lookup so unscoped tasks do not pull unrelated memory from other ventures or repos.
+
+### Fixed
+
+- Fixed shared-memory persistence so a memory write failure cannot fail an otherwise successful research run.
+- Fixed workflow recipe task creation so a non-critical `last_used_at` update failure cannot cause a retry to enqueue duplicate work.
+- Fixed workflow templates so malformed or unsafe placeholders are rejected before a recipe is saved or run.
+
 ## 0.2.1 - 2026-04-10
 
 ### Changed
