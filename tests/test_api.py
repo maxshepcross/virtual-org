@@ -235,6 +235,59 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
 
+    @patch("api.app.handle_slack_event")
+    @patch("api.app.verify_slack_signature")
+    def test_slack_events_endpoint_handles_url_verification(self, verify_slack_signature, handle_slack_event) -> None:
+        response = self.client.post(
+            "/slack/events",
+            json={"type": "url_verification", "challenge": "abc123"},
+            headers={
+                "X-Slack-Request-Timestamp": "123",
+                "X-Slack-Signature": "v0=test",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, "abc123")
+        handle_slack_event.assert_not_called()
+        verify_slack_signature.assert_called_once()
+
+    @patch("api.app.handle_slack_event")
+    @patch("api.app.verify_slack_signature")
+    def test_slack_events_endpoint_forwards_regular_event(self, verify_slack_signature, handle_slack_event) -> None:
+        handle_slack_event.return_value = {"ok": True}
+
+        response = self.client.post(
+            "/slack/events",
+            json={"type": "event_callback", "event": {"type": "message.im"}},
+            headers={
+                "X-Slack-Request-Timestamp": "123",
+                "X-Slack-Signature": "v0=test",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["ok"], True)
+        handle_slack_event.assert_called_once()
+
+    @patch("api.app.handle_interactivity")
+    @patch("api.app.verify_slack_signature")
+    def test_slack_interactivity_endpoint_parses_payload(self, verify_slack_signature, handle_interactivity) -> None:
+        handle_interactivity.return_value = {"text": "ok"}
+
+        response = self.client.post(
+            "/slack/interactivity",
+            data={"payload": '{"actions":[{"action_id":"approval_approve"}]}'},
+            headers={
+                "X-Slack-Request-Timestamp": "123",
+                "X-Slack-Signature": "v0=test",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["text"], "ok")
+        handle_interactivity.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

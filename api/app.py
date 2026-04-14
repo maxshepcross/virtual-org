@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 from threading import Lock, Thread
+from urllib.parse import parse_qs
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from models.control_plane import (
@@ -25,6 +27,13 @@ from services.approval_service import (
 from services.briefing_service import generate_briefing
 from services.policy_engine import PolicyEvaluationRequest
 from services.policy_service import evaluate_and_record_policy
+from services.slack_agent import (
+    SlackSignatureError,
+    handle_interactivity,
+    handle_slack_event,
+    parse_interactivity_payload,
+    verify_slack_signature,
+)
 from services.signal_service import SignalInput, record_signal
 from services.task_runner import TaskRunner
 
@@ -106,6 +115,41 @@ def require_control_api_token(authorization: str | None = Header(default=None)) 
 @app.get("/health")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/slack/events")
+async def slack_events_endpoint(request: Request) -> JSONResponse:
+    raw_body = await request.body()
+    try:
+        verify_slack_signature(
+            timestamp=request.headers.get("X-Slack-Request-Timestamp"),
+            signature=request.headers.get("X-Slack-Signature"),
+            body=raw_body,
+        )
+    except SlackSignatureError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    payload = await request.json()
+    if payload.get("type") == "url_verification":
+        return PlainTextResponse(str(payload.get("challenge") or ""))
+    return JSONResponse(handle_slack_event(payload))
+
+
+@app.post("/slack/interactivity")
+async def slack_interactivity_endpoint(request: Request) -> JSONResponse:
+    raw_body = await request.body()
+    try:
+        verify_slack_signature(
+            timestamp=request.headers.get("X-Slack-Request-Timestamp"),
+            signature=request.headers.get("X-Slack-Signature"),
+            body=raw_body,
+        )
+    except SlackSignatureError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    form_payload = parse_qs(raw_body.decode("utf-8"), keep_blank_values=True)
+    payload = parse_interactivity_payload((form_payload.get("payload") or [""])[0])
+    return JSONResponse(handle_interactivity(payload))
 
 
 @app.post("/v1/signals", status_code=201)

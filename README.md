@@ -47,6 +47,7 @@ Important `.env` values:
 - `ANTHROPIC_API_KEY` and `GITHUB_TOKEN` should be set in `.env`, never hardcoded in source.
 - `SLACK_DEFAULT_CHANNEL_ID` is the fallback Slack channel for founder-facing alerts when a task does not already have its own Slack route.
 - `SLACK_BOT_TOKEN` is the Slack bot token used by the always-on dispatcher to post alerts and approval requests.
+- `SLACK_SIGNING_SECRET` proves incoming Slack events and button clicks are genuine before the API trusts them.
 - `SLACK_DISPATCH_INTERVAL_SECONDS` controls how often the dispatcher checks for new items to post.
 
 ## Verification
@@ -119,6 +120,49 @@ Useful follow-up commands:
 ```bash
 journalctl -u virtual-org-slack-dispatcher -f
 ```
+
+## Run The Slack Agent
+
+The Slack agent is the richer founder chat surface. Think of it as the front desk: it receives Slack messages and button clicks, then hands the real work to the control plane and worker instead of keeping business logic inside Slack.
+
+The API already exposes the Slack endpoints:
+
+- `POST /slack/events`
+- `POST /slack/interactivity`
+
+To turn on Slack's AI-style surfaces, enable `Agents & AI Apps` in the Slack app settings and point Slack's event and interactivity URLs at this API.
+
+For the copy-paste Slack setup, use:
+
+- [deploy/slack/virtual-org-app-manifest.yaml](deploy/slack/virtual-org-app-manifest.yaml)
+- [docs/slack-agent-setup.md](docs/slack-agent-setup.md)
+
+If you do not have a public HTTPS URL for the control API yet, use:
+
+- [deploy/caddy/Caddyfile.example](deploy/caddy/Caddyfile.example)
+- [docs/public-api-url-setup.md](docs/public-api-url-setup.md)
+
+Minimum Slack app scopes for this setup:
+
+- `chat:write`
+- `assistant:write`
+- `app_mentions:read`
+- `im:history`
+
+Current founder actions supported in Slack:
+
+- check what is blocked
+- list pending approvals
+- show one task summary with `task 123`
+- generate a short briefing
+- trigger one safe worker pass
+- approve or deny requests from message buttons or commands
+
+Important:
+
+- Slack stays the chat surface.
+- This repo stays the source of truth.
+- OpenClaw and the control API still own the real logic, task state, and safety rules.
 
 For the full production checklist, restart commands, smoke tests, and common recovery steps, use:
 

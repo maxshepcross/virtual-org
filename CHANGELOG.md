@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.10 - 2026-04-09
+
+### Added
+
+- Added a real Slack agent layer with signed Slack event endpoints, interactivity handling, founder command routing, and AI-surface helpers for titles, loading states, and suggested prompts.
+- Added approval buttons to Slack approval messages so founder approvals can now be resolved directly inside Slack instead of only through the control API.
+- Added a Slack app manifest and a short setup guide so the new agent can be configured in Slack without hunting through docs.
+- Added a Caddy reverse-proxy template and public API URL setup guide so Slack can reach the local control API over HTTPS.
+- Added regression tests for Slack event verification, Slack interactivity parsing, founder command handling, and richer Slack delivery formatting.
+
+### Changed
+
+- Split Slack Web API calls into a shared client so the always-on dispatcher and the new Slack agent use the same Slack transport layer.
+
 ## 0.1.9 - 2026-04-09
 
 ### Added

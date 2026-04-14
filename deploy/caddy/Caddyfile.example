@@ -1,0 +1,6 @@
+# Caddy reverse proxy for exposing the local control API over public HTTPS.
+# Replace control.example.com with the real domain you point at this server.
+
+control.example.com {
+	reverse_proxy 127.0.0.1:8080
+}

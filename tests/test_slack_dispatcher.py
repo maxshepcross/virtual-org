@@ -43,14 +43,14 @@ class SlackDispatcherTests(unittest.TestCase):
     @patch("services.slack_dispatcher.mark_attention_item_posted")
     @patch("services.slack_dispatcher.list_unposted_approval_requests")
     @patch("services.slack_dispatcher.list_unposted_attention_items")
-    @patch("services.slack_dispatcher.SlackClient")
+    @patch("services.slack_dispatcher.SlackApiClient")
     @patch("services.slack_dispatcher.load_project_env")
     @patch("services.slack_dispatcher.os.getenv")
     def test_dispatch_once_posts_attention_and_approval_items(
         self,
         getenv,
         _load_project_env,
-        slack_client_cls,
+        slack_api_client_cls,
         list_attention,
         list_approvals,
         mark_attention_posted,
@@ -82,7 +82,7 @@ class SlackDispatcherTests(unittest.TestCase):
                 requested_slack_channel_id="#virtual-org-chief",
             )
         ]
-        slack_client = slack_client_cls.return_value
+        slack_client = slack_api_client_cls.return_value
         get_task.side_effect = [
             type("TaskStub", (), {"slack_thread_ts": None})(),
             type("TaskStub", (), {"slack_thread_ts": "111.222"})(),
@@ -99,6 +99,7 @@ class SlackDispatcherTests(unittest.TestCase):
         mark_attention_posted.assert_called_once_with(1, slack_message_ts="111.222")
         mark_approval_posted.assert_called_once_with(2, slack_message_ts="111.333")
         update_task_route.assert_called_once_with(7, slack_channel_id="C123", slack_thread_ts="111.222")
+        self.assertEqual(slack_client.post_message.call_args_list[1].kwargs["blocks"][1]["elements"][0]["action_id"], "approval_approve")
 
 
 if __name__ == "__main__":

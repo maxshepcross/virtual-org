@@ -1,0 +1,68 @@
+{
+  "display_information": {
+    "name": "Virtual Org",
+    "description": "Founder-facing control surface for the AI Venture Studio control plane.",
+    "long_description": "Virtual Org is the founder-facing Slack agent for the AI Venture Studio control plane. It helps the founder see what is blocked, review approvals, inspect task status, request a briefing, and trigger one safe worker pass while the real state, safety rules, and automation continue to live in the backend control plane and OpenClaw.",
+    "background_color": "#1F2937"
+  },
+  "features": {
+    "app_home": {
+      "home_tab_enabled": true,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    },
+    "assistant_view": {
+      "assistant_description": "Founder-facing assistant for checking blockers, approvals, task status, and safe worker actions in the Virtual Org control plane.",
+      "suggested_prompts": [
+        {
+          "title": "What is blocked?",
+          "message": "What is blocked right now?"
+        },
+        {
+          "title": "Show approvals",
+          "message": "Show pending approvals."
+        },
+        {
+          "title": "Daily briefing",
+          "message": "Give me a daily briefing."
+        },
+        {
+          "title": "Run one pass",
+          "message": "Run one worker pass."
+        }
+      ]
+    },
+    "bot_user": {
+      "display_name": "virtual-org",
+      "always_online": false
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "assistant:write",
+        "app_mentions:read",
+        "chat:write",
+        "im:history"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://worked-monitored-dollar-suites.trycloudflare.com/slack/events",
+      "bot_events": [
+        "app_mention",
+        "assistant_thread_context_changed",
+        "assistant_thread_started",
+        "message.im"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://worked-monitored-dollar-suites.trycloudflare.com/slack/interactivity"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import os
 import time
-from dataclasses import dataclass
-
-import httpx
 
 from config.env import load_project_env
 from models.control_plane import (
@@ -19,72 +16,11 @@ from models.control_plane import (
     update_agent_run,
 )
 from models.task import get_task, update_task_slack_route
+from services.slack_api import SlackApiClient, SlackApiError
 
 
-@dataclass
-class SlackPostResult:
-    channel: str
-    ts: str | None
-
-
-class SlackDispatcherError(RuntimeError):
+class SlackDispatcherError(SlackApiError):
     """Raised when Slack delivery fails."""
-
-
-class SlackClient:
-    """Very small Slack API client for posting plain-text messages."""
-
-    def __init__(self, bot_token: str) -> None:
-        self._client = httpx.Client(
-            base_url="https://slack.com/api/",
-            headers={"Authorization": f"Bearer {bot_token}"},
-            timeout=20.0,
-        )
-
-    def close(self) -> None:
-        self._client.close()
-
-    def post_message(self, *, channel: str, text: str, thread_ts: str | None = None) -> SlackPostResult:
-        payload: dict[str, str] = {"channel": self._resolve_channel(channel), "text": text}
-        if thread_ts:
-            payload["thread_ts"] = thread_ts
-
-        response = self._client.post("chat.postMessage", json=payload)
-        response.raise_for_status()
-        data = response.json()
-        if not data.get("ok"):
-            raise SlackDispatcherError(f"Slack API error: {data.get('error', 'unknown_error')}")
-        return SlackPostResult(channel=str(data.get("channel", payload["channel"])), ts=data.get("ts"))
-
-    def _resolve_channel(self, channel: str) -> str:
-        if not channel.startswith("#"):
-            return channel
-
-        target_name = channel.removeprefix("#")
-        cursor: str | None = None
-        while True:
-            params = {
-                "exclude_archived": "true",
-                "limit": "200",
-                "types": "public_channel,private_channel",
-            }
-            if cursor:
-                params["cursor"] = cursor
-            response = self._client.get("conversations.list", params=params)
-            response.raise_for_status()
-            data = response.json()
-            if not data.get("ok"):
-                raise SlackDispatcherError(f"Slack API error: {data.get('error', 'unknown_error')}")
-
-            for conversation in data.get("channels", []):
-                if conversation.get("name") == target_name:
-                    return str(conversation["id"])
-
-            cursor = data.get("response_metadata", {}).get("next_cursor") or None
-            if not cursor:
-                break
-
-        raise SlackDispatcherError(f"Slack channel {channel} was not found for the bot token.")
 
 
 def _format_attention_item(item: AttentionItem) -> str:
@@ -113,6 +49,44 @@ def _format_approval_request(request: ApprovalRequest) -> str:
     return "\n".join(lines)
 
 
+def _approval_request_blocks(request: ApprovalRequest) -> list[dict]:
+    value_prefix = f"{request.id}:"
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _format_approval_request(request),
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "text": {"type": "plain_text", "text": "Approve"},
+                    "action_id": "approval_approve",
+                    "value": f"{value_prefix}approved",
+                },
+                {
+                    "type": "button",
+                    "style": "danger",
+                    "text": {"type": "plain_text", "text": "Deny"},
+                    "action_id": "approval_deny",
+                    "value": f"{value_prefix}denied",
+                    "confirm": {
+                        "title": {"type": "plain_text", "text": "Deny this action?"},
+                        "text": {"type": "mrkdwn", "text": "This will block the action until someone creates a new approval request."},
+                        "confirm": {"type": "plain_text", "text": "Deny"},
+                        "deny": {"type": "plain_text", "text": "Cancel"},
+                    },
+                },
+            ],
+        },
+    ]
+
+
 def _should_claim_task_thread(task_id: int | None, provided_thread_ts: str | None) -> bool:
     if task_id is None or provided_thread_ts:
         return False
@@ -131,7 +105,7 @@ def dispatch_once(limit: int = 25) -> dict[str, int]:
 
     sent_attention = 0
     sent_approvals = 0
-    client = SlackClient(bot_token)
+    client = SlackApiClient(bot_token)
     try:
         for item in attention_items:
             if not item.slack_channel_id:
@@ -163,6 +137,7 @@ def dispatch_once(limit: int = 25) -> dict[str, int]:
                 channel=request.requested_slack_channel_id,
                 thread_ts=request.requested_slack_thread_ts,
                 text=_format_approval_request(request),
+                blocks=_approval_request_blocks(request),
             )
             mark_approval_request_posted(request.id, slack_message_ts=result.ts)
             if request.agent_run_id is not None:
