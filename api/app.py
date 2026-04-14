@@ -17,6 +17,13 @@ from models.control_plane import (
     list_briefings,
     update_agent_run,
 )
+from models.knowledge import (
+    create_task_from_workflow_recipe,
+    create_workflow_recipe,
+    list_memory_entries,
+    list_workflow_recipes,
+    upsert_memory_entry,
+)
 from models.task import complete_manual_verification, create_task, list_tasks, requeue_task
 from services.approval_service import (
     ApprovalCreateRequest,
@@ -106,6 +113,27 @@ class TaskCreateRequest(BaseModel):
     slack_thread_ts: str | None = None
 
 
+class WorkflowRecipeCreateRequest(BaseModel):
+    slug: str | None = None
+    title: str
+    summary: str
+    category: str
+    target_repo: str | None = None
+    venture: str | None = None
+    task_title_template: str | None = None
+    task_description_template: str | None = None
+    tags: list[str] | None = None
+    created_by: str | None = None
+
+
+class WorkflowRecipeRunRequest(BaseModel):
+    request: str = ""
+    variables: dict | None = None
+    requested_by: str | None = None
+    slack_channel_id: str | None = None
+    slack_thread_ts: str | None = None
+
+
 class ManualVerificationCompleteRequest(BaseModel):
     story_id: str | None = None
     note: str = "Manual verification completed."
@@ -113,6 +141,18 @@ class ManualVerificationCompleteRequest(BaseModel):
 
 class TaskRequeueRequest(BaseModel):
     note: str = "Task requeued from Paperclip."
+
+
+class MemoryEntryCreateRequest(BaseModel):
+    kind: str
+    title: str
+    body: str
+    task_id: int | None = None
+    target_repo: str | None = None
+    venture: str | None = None
+    tags: list[str] | None = None
+    source_key: str | None = None
+    created_by: str | None = None
 
 
 def require_control_api_token(authorization: str | None = Header(default=None)) -> None:
@@ -399,3 +439,91 @@ def run_worker_once_endpoint(payload: dict | None = None, _: None = Depends(requ
         "status": "started",
         "worker_id": worker_id,
     }
+
+
+@app.get("/v1/workflows")
+def list_workflows_endpoint(
+    limit: int = 50,
+    category: str | None = None,
+    target_repo: str | None = None,
+    _: None = Depends(require_control_api_token),
+) -> dict[str, list[dict]]:
+    workflows = list_workflow_recipes(limit=limit, category=category, target_repo=target_repo)
+    return {"items": [workflow.model_dump() for workflow in workflows]}
+
+
+@app.post("/v1/workflows", status_code=201)
+def create_workflow_endpoint(
+    payload: WorkflowRecipeCreateRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    try:
+        workflow = create_workflow_recipe(
+            slug=payload.slug,
+            title=payload.title,
+            summary=payload.summary,
+            category=payload.category,
+            target_repo=payload.target_repo,
+            venture=payload.venture,
+            task_title_template=payload.task_title_template,
+            task_description_template=payload.task_description_template,
+            tags=payload.tags,
+            created_by=payload.created_by,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return workflow.model_dump()
+
+
+@app.post("/v1/workflows/{slug}/tasks", status_code=201)
+def create_task_from_workflow_endpoint(
+    slug: str,
+    payload: WorkflowRecipeRunRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    try:
+        task = create_task_from_workflow_recipe(
+            slug,
+            request=payload.request,
+            variables=payload.variables,
+            requested_by=payload.requested_by,
+            slack_channel_id=payload.slack_channel_id,
+            slack_thread_ts=payload.slack_thread_ts,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return task.model_dump()
+
+
+@app.get("/v1/memory")
+def list_memory_endpoint(
+    limit: int = 50,
+    kind: str | None = None,
+    target_repo: str | None = None,
+    venture: str | None = None,
+    _: None = Depends(require_control_api_token),
+) -> dict[str, list[dict]]:
+    entries = list_memory_entries(limit=limit, kind=kind, target_repo=target_repo, venture=venture)
+    return {"items": [entry.model_dump() for entry in entries]}
+
+
+@app.post("/v1/memory", status_code=201)
+def create_memory_endpoint(
+    payload: MemoryEntryCreateRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    try:
+        entry = upsert_memory_entry(
+            kind=payload.kind,
+            title=payload.title,
+            body=payload.body,
+            task_id=payload.task_id,
+            target_repo=payload.target_repo,
+            venture=payload.venture,
+            tags=payload.tags,
+            source_key=payload.source_key,
+            created_by=payload.created_by,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return entry.model_dump()

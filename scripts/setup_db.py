@@ -224,6 +224,44 @@ CREATE TABLE IF NOT EXISTS slack_routes (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_slack_routes_task_id ON slack_routes(task_id);
 
+CREATE TABLE IF NOT EXISTS workflow_recipes (
+    id              BIGSERIAL PRIMARY KEY,
+    slug            TEXT NOT NULL UNIQUE,
+    title           TEXT NOT NULL,
+    summary         TEXT NOT NULL,
+    category        TEXT NOT NULL,
+    target_repo     TEXT,
+    venture         TEXT,
+    task_title_template TEXT NOT NULL,
+    task_description_template TEXT NOT NULL,
+    tags_json       JSONB NOT NULL DEFAULT '[]'::JSONB,
+    created_by      TEXT,
+    last_used_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_recipes_category ON workflow_recipes(category);
+CREATE INDEX IF NOT EXISTS idx_workflow_recipes_target_repo ON workflow_recipes(target_repo);
+
+CREATE TABLE IF NOT EXISTS memory_entries (
+    id              BIGSERIAL PRIMARY KEY,
+    kind            TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    body            TEXT NOT NULL,
+    task_id         BIGINT REFERENCES tasks(id) ON DELETE SET NULL,
+    target_repo     TEXT,
+    venture         TEXT,
+    tags_json       JSONB NOT NULL DEFAULT '[]'::JSONB,
+    source_key      TEXT UNIQUE,
+    created_by      TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_entries_task_id ON memory_entries(task_id);
+CREATE INDEX IF NOT EXISTS idx_memory_entries_target_repo ON memory_entries(target_repo);
+CREATE INDEX IF NOT EXISTS idx_memory_entries_kind ON memory_entries(kind);
+
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS execution_stories_json JSONB;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS progress_notes_json JSONB;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS verification_json JSONB;

@@ -24,6 +24,12 @@ class SetupDbSchemaTests(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS approval_requests", SCHEMA_SQL)
         self.assertIn("CREATE TABLE IF NOT EXISTS policy_decisions", SCHEMA_SQL)
 
+    def test_schema_creates_reusable_workflow_and_memory_tables(self) -> None:
+        self.assertIn("CREATE TABLE IF NOT EXISTS workflow_recipes", SCHEMA_SQL)
+        self.assertIn("slug            TEXT NOT NULL UNIQUE", SCHEMA_SQL)
+        self.assertIn("CREATE TABLE IF NOT EXISTS memory_entries", SCHEMA_SQL)
+        self.assertIn("source_key      TEXT UNIQUE", SCHEMA_SQL)
+
 
 if __name__ == "__main__":
     unittest.main()
