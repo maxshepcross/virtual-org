@@ -25,6 +25,14 @@ Point that domain's `A` record to the public IP address of the server running `v
 
 If you do not have a domain ready, use a temporary tunnel for testing instead, but do not treat that as the long-term setup.
 
+For this deployment, use:
+
+```text
+openclaw.tempa.agency
+```
+
+Do not repoint `tempa.agency` itself. The root domain is the public Tempa site. A subdomain lets Slack reach OpenClaw without risking the main website.
+
 ## Step 2: install Caddy on the server
 
 On Ubuntu or Debian, follow Caddy's official install instructions.

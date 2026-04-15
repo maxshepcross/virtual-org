@@ -52,7 +52,13 @@ Use the manifest in:
 
 - `deploy/slack/virtual-org-app-manifest.yaml`
 
-Replace `https://YOUR_CONTROL_API_HOST` with the real public API base URL before pasting it into Slack.
+The checked-in manifest points at:
+
+```text
+https://openclaw.tempa.agency
+```
+
+That subdomain must be live before Slack can verify the event URL.
 
 The manifest already includes the scopes and events this code expects:
 
@@ -69,7 +75,7 @@ This is the founder-friendly path through Slack's developer UI:
 3. Choose `From an app manifest`
 4. Pick the target workspace
 5. Paste the contents of `deploy/slack/virtual-org-app-manifest.yaml`
-6. Replace `https://YOUR_CONTROL_API_HOST` with the real public API base URL before saving
+6. Confirm the URLs use `https://openclaw.tempa.agency`
 7. Create the app
 
 After the app exists, check these pages in the left sidebar:
