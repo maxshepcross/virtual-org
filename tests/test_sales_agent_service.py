@@ -96,9 +96,14 @@ class SalesAgentServiceTests(unittest.TestCase):
 
         self.assertEqual(result.imported, 1)
         self.assertEqual(result.skipped_invalid, 2)
+        self.assertEqual(result.returned, 3)
+        self.assertEqual(result.missing_email, 1)
+        self.assertEqual(result.invalid_country, 1)
         create_prospect.assert_called_once()
         self.assertEqual(create_prospect.call_args.kwargs["source"], "apollo")
         self.assertEqual(create_prospect.call_args.kwargs["company_domain"], "acme.com")
+        signal = create_prospect.call_args.kwargs["source_context_json"]["lead_signal"]
+        self.assertIn("senior founder/operator title", signal["reasons"])
 
     @patch("services.sales_agent_service.create_prospect")
     def test_apollo_import_counts_duplicates(self, create_prospect) -> None:
@@ -128,6 +133,38 @@ class SalesAgentServiceTests(unittest.TestCase):
 
         self.assertEqual(result.imported, 0)
         self.assertEqual(result.skipped_duplicates, 1)
+        self.assertEqual(result.returned, 1)
+
+    @patch("services.sales_agent_service.create_prospect")
+    def test_apollo_import_skips_low_signal_rows_before_email_checks(self, create_prospect) -> None:
+        apollo_source = Mock()
+        apollo_source.search_people.return_value = [
+            {
+                "id": "person_1",
+                "email": "ada@example.com",
+                "title": "Intern",
+                "organization": {"name": "Acme"},
+            }
+        ]
+
+        result = SalesAgentService(apollo_source=apollo_source).import_prospects(
+            2,
+            request=type(
+                "Request",
+                (),
+                {
+                    "source": "apollo",
+                    "apollo_search": ApolloSearchRequest(min_signal_score=50),
+                    "prospects": [],
+                },
+            )(),
+        )
+
+        self.assertEqual(result.imported, 0)
+        self.assertEqual(result.returned, 1)
+        self.assertEqual(result.skipped_low_signal, 1)
+        self.assertEqual(result.skipped_invalid, 0)
+        create_prospect.assert_not_called()
 
     @patch("services.sales_agent_service.list_sender_accounts")
     @patch("services.sales_agent_service.list_sales_agents")
