@@ -106,6 +106,8 @@ Useful reusable-workflow endpoints:
 - `POST /v1/sales/agents/{agent_id}/send-mode` changes an agent between dry-run and live mode.
 - `POST /v1/sales/agents/{agent_id}/send` runs one sales-send worker pass.
 
+Apollo imports can include `min_signal_score` and `signal_keywords` inside `apollo_search`. The API reports how many rows were returned, skipped for low signal, missing email, missing company, or invalid country.
+
 Example: save a reusable workflow recipe
 
 ```bash

@@ -34,7 +34,7 @@ from models.sales import (
     transition_prospect_status,
 )
 from services.approval_service import ExternalApprovalCreateRequest, create_external_approval
-from services.apollo_sales_source import ApolloSalesSource, ApolloSearchRequest
+from services.apollo_sales_source import ApolloLeadSignal, ApolloSalesSource, ApolloSearchRequest, score_apollo_lead
 from services.sales_eval_service import SalesEvalInput, SalesEvalService
 from services.sales_approval_keys import sales_message_approval_event_id
 from services.sales_personalization import TempaPersonalizationClient, build_sales_email
@@ -68,6 +68,11 @@ class SalesImportResult(BaseModel):
     imported: int
     skipped_duplicates: int
     skipped_invalid: int = 0
+    returned: int = 0
+    skipped_low_signal: int = 0
+    missing_email: int = 0
+    missing_company: int = 0
+    invalid_country: int = 0
 
 
 class SalesPersonalizeResult(BaseModel):
@@ -231,6 +236,11 @@ class SalesAgentService:
                 "imported": result.imported,
                 "skipped_duplicates": result.skipped_duplicates,
                 "skipped_invalid": result.skipped_invalid,
+                "returned": result.returned,
+                "skipped_low_signal": result.skipped_low_signal,
+                "missing_email": result.missing_email,
+                "missing_company": result.missing_company,
+                "invalid_country": result.invalid_country,
             },
         )
         return result
@@ -270,13 +280,69 @@ class SalesAgentService:
 
     def _import_from_apollo(self, agent_id: int, search: ApolloSearchRequest) -> SalesImportResult:
         raw_people = self.apollo_source.search_people(search)
-        prospects = [prospect for person in raw_people if (prospect := self._apollo_person_to_import(person))]
-        skipped_invalid = len(raw_people) - len(prospects)
-        result = self._import_manual_prospects(agent_id, "apollo", prospects)
-        result.skipped_invalid += skipped_invalid
-        return result
+        imported = 0
+        skipped_duplicates = 0
+        skipped_invalid = 0
+        skipped_low_signal = 0
+        missing_email = 0
+        missing_company = 0
+        invalid_country = 0
 
-    def _apollo_person_to_import(self, person: dict[str, Any]) -> SalesProspectImportInput | None:
+        for person in raw_people:
+            signal = score_apollo_lead(person, signal_keywords=search.signal_keywords)
+            if signal.score < search.min_signal_score:
+                skipped_low_signal += 1
+                continue
+            prospect, invalid_reasons = self._apollo_person_to_import(person, signal)
+            if invalid_reasons:
+                skipped_invalid += 1
+                if "missing_email" in invalid_reasons:
+                    missing_email += 1
+                if "missing_company" in invalid_reasons:
+                    missing_company += 1
+                continue
+            if not prospect:
+                skipped_invalid += 1
+                continue
+            if not self._valid_import_prospect(prospect):
+                skipped_invalid += 1
+                invalid_country += 1
+                continue
+            created = create_prospect(
+                agent_id=agent_id,
+                source="apollo",
+                external_id=prospect.external_id,
+                email=prospect.email,
+                first_name=prospect.first_name,
+                last_name=prospect.last_name,
+                title=prospect.title,
+                company_name=prospect.company_name,
+                company_domain=prospect.company_domain,
+                company_url=prospect.company_url,
+                country=prospect.country,
+                source_context_json=prospect.source_context_json,
+            )
+            if created:
+                imported += 1
+            else:
+                skipped_duplicates += 1
+
+        return SalesImportResult(
+            imported=imported,
+            skipped_duplicates=skipped_duplicates,
+            skipped_invalid=skipped_invalid,
+            returned=len(raw_people),
+            skipped_low_signal=skipped_low_signal,
+            missing_email=missing_email,
+            missing_company=missing_company,
+            invalid_country=invalid_country,
+        )
+
+    def _apollo_person_to_import(
+        self,
+        person: dict[str, Any],
+        signal: ApolloLeadSignal,
+    ) -> tuple[SalesProspectImportInput | None, list[str]]:
         email = str(person.get("email") or "").strip()
         organization = person.get("organization") if isinstance(person.get("organization"), dict) else {}
         company_name = (
@@ -287,8 +353,13 @@ class SalesAgentService:
             or ""
         )
         company_name = str(company_name).strip()
-        if not email or "@" not in email or not company_name:
-            return None
+        invalid_reasons: list[str] = []
+        if not email or "@" not in email:
+            invalid_reasons.append("missing_email")
+        if not company_name:
+            invalid_reasons.append("missing_company")
+        if invalid_reasons:
+            return None, invalid_reasons
 
         company_domain = (
             person.get("organization_primary_domain")
@@ -306,8 +377,11 @@ class SalesAgentService:
             company_url=organization.get("website_url") or person.get("company_url"),
             country=person.get("country") or person.get("person_country") or "US",
             external_id=person.get("id"),
-            source_context_json={"apollo": self._safe_apollo_context(person)},
-        )
+            source_context_json={
+                "apollo": self._safe_apollo_context(person),
+                "lead_signal": signal.model_dump(),
+            },
+        ), []
 
     def _valid_import_prospect(self, prospect: SalesProspectImportInput) -> bool:
         if not prospect.email or "@" not in prospect.email or not prospect.company_name.strip():
@@ -342,6 +416,8 @@ class SalesAgentService:
             "country": person.get("country") or person.get("person_country"),
             "organization_id": organization.get("id") or person.get("organization_id"),
             "organization_name": organization.get("name") or person.get("organization_name"),
+            "organization_domain": organization.get("primary_domain") or person.get("organization_primary_domain"),
+            "organization_website_url": organization.get("website_url") or person.get("company_url"),
         }
 
     def personalize_prospects(self, agent_id: int, *, limit: int = 5) -> SalesPersonalizeResult:

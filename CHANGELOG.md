@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.4 - 2026-04-16
+
+### Added
+
+- Added Apollo lead signal scoring with visible reasons and warnings so sales imports can filter for higher-intent prospects before saving them.
+- Added Apollo import diagnostics for returned rows, low-signal skips, missing emails, missing companies, and invalid countries.
+- Documented signal-based Apollo import examples in the Tempa sales-agent runbook.
+
 ## 0.2.3 - 2026-04-16
 
 ### Added

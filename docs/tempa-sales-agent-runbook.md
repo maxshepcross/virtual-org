@@ -195,6 +195,42 @@ Then restart the worker:
 systemctl restart virtual-org-sales-worker
 ```
 
+## Apollo Signal Imports
+
+Use Apollo imports only after the dry-run flow works with manual prospects. Start with a tiny batch and a signal threshold:
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/sales/agents/AGENT_ID/import \
+  -H "Authorization: Bearer $CONTROL_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source": "apollo",
+    "apollo_search": {
+      "person_titles": ["Founder", "CEO", "Head of Growth"],
+      "person_locations": ["United Kingdom"],
+      "organization_locations": ["United Kingdom"],
+      "per_page": 10,
+      "min_signal_score": 50,
+      "signal_keywords": ["growth", "paid social", "marketing", "ecommerce", "saas"]
+    }
+  }'
+```
+
+The response includes diagnostics:
+
+```json
+{
+  "returned": 10,
+  "imported": 0,
+  "skipped_low_signal": 2,
+  "missing_email": 8,
+  "missing_company": 0,
+  "invalid_country": 0
+}
+```
+
+If `missing_email` is high, Apollo is finding people but not returning unlocked email addresses.
+
 ## Emergency Stop
 
 This is the fastest safe stop:
