@@ -1,0 +1,29 @@
+# Systemd unit for the Tempa sales send worker.
+# Copy this file to /etc/systemd/system/virtual-org-sales-worker.service on the server.
+# Set SALES_AGENT_ID in /opt/virtual-org/.env after creating the production sales agent.
+# Create a low-privilege virtual-org user and deploy the repo to /opt/virtual-org.
+
+[Unit]
+Description=Tempa Sales Send Worker
+After=network.target postgresql.service virtual-org-sales-public-api.service
+Wants=network.target virtual-org-sales-public-api.service
+
+[Service]
+Type=simple
+User=virtual-org
+Group=virtual-org
+WorkingDirectory=/opt/virtual-org
+Environment=SALES_WORKER_POLL_INTERVAL_SECONDS=60
+EnvironmentFile=/opt/virtual-org/.env
+ExecStart=/opt/virtual-org/.venv/bin/python3 /opt/virtual-org/scripts/run_sales_worker.py --loop --poll-interval-seconds ${SALES_WORKER_POLL_INTERVAL_SECONDS}
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,27 @@
+# Systemd unit for the public Tempa sales endpoints.
+# Copy this file to /etc/systemd/system/virtual-org-sales-public-api.service on the server.
+# Create a low-privilege virtual-org user and deploy the repo to /opt/virtual-org.
+
+[Unit]
+Description=Tempa Sales Public API
+After=network.target postgresql.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=virtual-org
+Group=virtual-org
+WorkingDirectory=/opt/virtual-org
+EnvironmentFile=/opt/virtual-org/.env
+ExecStart=/opt/virtual-org/.venv/bin/python3 /opt/virtual-org/scripts/run_sales_public_api.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

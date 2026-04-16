@@ -6,7 +6,7 @@ import os
 from threading import Lock, Thread
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from models.control_plane import (
     append_agent_run_artifact,
@@ -32,15 +32,24 @@ from services.approval_service import (
     get_pending_approvals,
     resolve_approval,
 )
+from services.apollo_sales_source import ApolloMissingApiKeyError, ApolloRateLimitError
 from services.briefing_service import generate_briefing
 from services.importance_service import BusinessSignalInput, record_business_signal
 from services.policy_engine import PolicyEvaluationRequest
 from services.policy_service import evaluate_and_record_policy
 from services.signal_service import SignalInput, record_signal
+from services.sales_agent_service import (
+    SalesAgentSendModeRequest,
+    SalesAgentService,
+    SalesImportRequest,
+    SalesSenderCreateRequest,
+)
+from services.sales_send_worker import SalesSendWorker
 from services.task_runner import TaskRunner
 
 app = FastAPI(title="AI Venture Studio Control API", version="0.1.0")
 _worker_run_lock = Lock()
+_sales_service = SalesAgentService()
 
 
 def _run_worker_pass(worker_id: str, poll_interval_seconds: int) -> None:
@@ -153,6 +162,15 @@ class MemoryEntryCreateRequest(BaseModel):
     tags: list[str] | None = None
     source_key: str | None = None
     created_by: str | None = None
+
+
+class SalesAgentCreateRequest(BaseModel):
+    name: str = "Tempa Sales Agent"
+    venture: str = "tempa"
+
+
+class SalesPersonalizeRequest(BaseModel):
+    limit: int = Field(default=5, ge=1, le=25)
 
 
 def require_control_api_token(authorization: str | None = Header(default=None)) -> None:
@@ -412,6 +430,145 @@ def list_briefings_endpoint(
         delivered_to=delivered_to,
     )
     return {"items": [item.model_dump() for item in items]}
+
+
+@app.post("/v1/sales/agents", status_code=201)
+def create_sales_agent_endpoint(
+    payload: SalesAgentCreateRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    agent = _sales_service.create_agent(name=payload.name, venture=payload.venture)
+    return agent.model_dump()
+
+
+@app.get("/v1/sales/agents")
+def list_sales_agents_endpoint(
+    venture: str | None = None,
+    _: None = Depends(require_control_api_token),
+) -> dict[str, list[dict]]:
+    return {"items": [agent.model_dump() for agent in _sales_service.list_agents(venture=venture)]}
+
+
+@app.post("/v1/sales/agents/{agent_id}/import", status_code=201)
+def import_sales_prospects_endpoint(
+    agent_id: int,
+    payload: SalesImportRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    try:
+        result = _sales_service.import_prospects(agent_id, payload)
+    except ApolloMissingApiKeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ApolloRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result.model_dump()
+
+
+@app.post("/v1/sales/agents/{agent_id}/senders", status_code=201)
+def create_sales_sender_endpoint(
+    agent_id: int,
+    payload: SalesSenderCreateRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    return _sales_service.create_sender(agent_id, payload)
+
+
+@app.post("/v1/sales/agents/{agent_id}/request-live-approval", status_code=201)
+def request_sales_live_approval_endpoint(
+    agent_id: int,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    try:
+        return _sales_service.request_first_live_send_approval(agent_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/v1/sales/agents/{agent_id}/dry-run-summary")
+def sales_dry_run_summary_endpoint(
+    agent_id: int,
+    limit: int = 25,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    return _sales_service.dry_run_summary(agent_id, limit=limit).model_dump()
+
+
+@app.post("/v1/sales/agents/{agent_id}/personalize", status_code=202)
+def personalize_sales_prospects_endpoint(
+    agent_id: int,
+    payload: SalesPersonalizeRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    result = _sales_service.personalize_prospects(agent_id, limit=payload.limit)
+    return result.model_dump()
+
+
+@app.post("/v1/sales/agents/{agent_id}/send", status_code=202)
+def send_sales_prospects_endpoint(
+    agent_id: int,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    result = SalesSendWorker().run_once(agent_id)
+    return result.model_dump()
+
+
+@app.post("/v1/sales/agents/{agent_id}/pause")
+def pause_sales_agent_endpoint(agent_id: int, _: None = Depends(require_control_api_token)) -> dict:
+    agent = _sales_service.pause_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Sales agent {agent_id} was not found.")
+    return agent.model_dump()
+
+
+@app.post("/v1/sales/agents/{agent_id}/resume")
+def resume_sales_agent_endpoint(agent_id: int, _: None = Depends(require_control_api_token)) -> dict:
+    agent = _sales_service.resume_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Sales agent {agent_id} was not found.")
+    return agent.model_dump()
+
+
+@app.post("/v1/sales/agents/{agent_id}/send-mode")
+def set_sales_agent_send_mode_endpoint(
+    agent_id: int,
+    payload: SalesAgentSendModeRequest,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    try:
+        agent = _sales_service.set_send_mode(agent_id, payload.send_mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Sales agent {agent_id} was not found.")
+    return agent.model_dump()
+
+
+@app.get("/v1/sales/prospects")
+def list_sales_prospects_endpoint(
+    agent_id: int | None = None,
+    status: str | None = None,
+    _: None = Depends(require_control_api_token),
+) -> dict[str, list[dict]]:
+    return {"items": _sales_service.list_prospects(agent_id=agent_id, status=status)}
+
+
+@app.get("/v1/sales/messages")
+def list_sales_messages_endpoint(
+    agent_id: int | None = None,
+    status: str | None = None,
+    _: None = Depends(require_control_api_token),
+) -> dict[str, list[dict]]:
+    return {"items": _sales_service.list_messages(agent_id=agent_id, status=status)}
+
+
+@app.get("/v1/sales/health")
+def sales_health_endpoint(
+    agent_id: int | None = None,
+    _: None = Depends(require_control_api_token),
+) -> dict:
+    return _sales_service.health(agent_id=agent_id)
 
 
 @app.post("/v1/worker/run-once", status_code=202)
