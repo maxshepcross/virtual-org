@@ -5,7 +5,13 @@ from unittest.mock import patch
 
 from models.control_plane import ApprovalRequest
 from models.task import Task
-from services.approval_service import ApprovalResolutionRequest, resolve_approval
+from services.approval_service import (
+    ApprovalResolutionRequest,
+    ExternalApprovalCreateRequest,
+    create_external_approval,
+    external_approval_is_approved,
+    resolve_approval,
+)
 
 
 class ApprovalServiceTests(unittest.TestCase):
@@ -172,6 +178,49 @@ class ApprovalServiceTests(unittest.TestCase):
         _, kwargs = create_approval_request.call_args
         self.assertEqual(kwargs["requested_slack_channel_id"], "#task-channel")
         self.assertEqual(kwargs["requested_slack_thread_ts"], "111.222")
+
+    @patch("services.approval_service.create_approval_request")
+    @patch("services.approval_service.get_approval_request_by_external_event_id")
+    @patch("services.slack_routing.os.getenv")
+    def test_create_external_approval_uses_existing_approval_table(
+        self,
+        getenv,
+        get_approval_request_by_external_event_id,
+        create_approval_request,
+    ) -> None:
+        getenv.return_value = "#chief"
+        get_approval_request_by_external_event_id.return_value = None
+        create_approval_request.return_value = ApprovalRequest(
+            id=11,
+            action_type="sales_first_live_send",
+            target_summary="Approve first live batch",
+            external_event_id="sales:first-live:3",
+        )
+
+        approval = create_external_approval(
+            ExternalApprovalCreateRequest(
+                action_type="sales_first_live_send",
+                target_summary="Approve first live batch",
+                external_event_id="sales:first-live:3",
+            )
+        )
+
+        self.assertEqual(approval.external_event_id, "sales:first-live:3")
+        _, kwargs = create_approval_request.call_args
+        self.assertIsNone(kwargs["task_id"])
+        self.assertEqual(kwargs["requested_slack_channel_id"], "#chief")
+
+    @patch("services.approval_service.get_approval_request_by_external_event_id")
+    def test_external_approval_is_approved(self, get_approval_request_by_external_event_id) -> None:
+        get_approval_request_by_external_event_id.return_value = ApprovalRequest(
+            id=12,
+            action_type="sales_first_live_send",
+            target_summary="Approve first live batch",
+            status="approved",
+            external_event_id="sales:first-live:3",
+        )
+
+        self.assertTrue(external_approval_is_approved("sales:first-live:3"))
 
 
 if __name__ == "__main__":

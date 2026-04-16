@@ -262,6 +262,158 @@ CREATE INDEX IF NOT EXISTS idx_memory_entries_task_id ON memory_entries(task_id)
 CREATE INDEX IF NOT EXISTS idx_memory_entries_target_repo ON memory_entries(target_repo);
 CREATE INDEX IF NOT EXISTS idx_memory_entries_kind ON memory_entries(kind);
 
+-- Sales agent: controlled Tempa outbound experiment
+CREATE TABLE IF NOT EXISTS sales_agents (
+    id              BIGSERIAL PRIMARY KEY,
+    venture         TEXT NOT NULL DEFAULT 'tempa',
+    name            TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'paused',
+    send_mode       TEXT NOT NULL DEFAULT 'dry_run',
+    daily_new_prospect_limit INTEGER NOT NULL DEFAULT 5,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS sales_sender_accounts (
+    id              BIGSERIAL PRIMARY KEY,
+    agent_id        BIGINT NOT NULL REFERENCES sales_agents(id) ON DELETE CASCADE,
+    email           TEXT NOT NULL,
+    inbox_id        TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'paused',
+    daily_cap       INTEGER NOT NULL DEFAULT 5,
+    verified        BOOLEAN NOT NULL DEFAULT FALSE,
+    pause_reason    TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS sales_prospects (
+    id              BIGSERIAL PRIMARY KEY,
+    agent_id        BIGINT NOT NULL REFERENCES sales_agents(id) ON DELETE CASCADE,
+    source          TEXT NOT NULL,
+    external_id     TEXT,
+    email           TEXT NOT NULL,
+    normalized_email_hash TEXT NOT NULL,
+    first_name      TEXT,
+    last_name       TEXT,
+    title           TEXT,
+    company_name    TEXT NOT NULL,
+    company_domain  TEXT,
+    company_url     TEXT,
+    country         TEXT,
+    status          TEXT NOT NULL DEFAULT 'imported',
+    source_context_json JSONB NOT NULL DEFAULT '{}'::JSONB,
+    events_json     JSONB NOT NULL DEFAULT '[]'::JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS sales_personalizations (
+    id              BIGSERIAL PRIMARY KEY,
+    prospect_id     BIGINT NOT NULL REFERENCES sales_prospects(id) ON DELETE CASCADE,
+    strategy_json   JSONB NOT NULL,
+    email_subject   TEXT NOT NULL,
+    email_body      TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'drafted',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sales_outreach_messages (
+    id              BIGSERIAL PRIMARY KEY,
+    agent_id        BIGINT NOT NULL REFERENCES sales_agents(id) ON DELETE CASCADE,
+    prospect_id     BIGINT NOT NULL REFERENCES sales_prospects(id) ON DELETE CASCADE,
+    sender_account_id BIGINT REFERENCES sales_sender_accounts(id) ON DELETE SET NULL,
+    personalization_id BIGINT REFERENCES sales_personalizations(id) ON DELETE SET NULL,
+    preview_token_id BIGINT,
+    subject         TEXT NOT NULL,
+    body            TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'drafted',
+    agentmail_message_id TEXT,
+    sent_at         TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS sales_preview_tokens (
+    id              BIGSERIAL PRIMARY KEY,
+    prospect_id     BIGINT NOT NULL REFERENCES sales_prospects(id) ON DELETE CASCADE,
+    token_hash      TEXT NOT NULL,
+    purpose         TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'valid',
+    expires_at      TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    revoked_at      TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS sales_suppression_entries (
+    id              BIGSERIAL PRIMARY KEY,
+    normalized_email_hash TEXT,
+    domain          TEXT,
+    reason          TEXT NOT NULL,
+    source          TEXT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sales_send_events (
+    id              BIGSERIAL PRIMARY KEY,
+    event_id        TEXT NOT NULL,
+    event_type      TEXT NOT NULL,
+    agentmail_message_id TEXT,
+    prospect_id     BIGINT REFERENCES sales_prospects(id) ON DELETE SET NULL,
+    sender_account_id BIGINT REFERENCES sales_sender_accounts(id) ON DELETE SET NULL,
+    safe_metadata_json JSONB NOT NULL DEFAULT '{}'::JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sales_reply_triage_events (
+    id              BIGSERIAL PRIMARY KEY,
+    send_event_id   BIGINT REFERENCES sales_send_events(id) ON DELETE SET NULL,
+    prospect_id     BIGINT REFERENCES sales_prospects(id) ON DELETE SET NULL,
+    classification  TEXT NOT NULL,
+    suggested_response_angle TEXT,
+    model_output_json JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sales_eval_results (
+    id              BIGSERIAL PRIMARY KEY,
+    prospect_id     BIGINT NOT NULL REFERENCES sales_prospects(id) ON DELETE CASCADE,
+    personalization_id BIGINT REFERENCES sales_personalizations(id) ON DELETE SET NULL,
+    status          TEXT NOT NULL,
+    deterministic_passed BOOLEAN NOT NULL,
+    llm_passed      BOOLEAN,
+    failures_json   JSONB NOT NULL DEFAULT '[]'::JSONB,
+    rubric_json     JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sales_prospects_agent_status ON sales_prospects(agent_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_prospects_normalized_email_hash ON sales_prospects(normalized_email_hash);
+CREATE INDEX IF NOT EXISTS idx_sales_prospects_company_domain ON sales_prospects(company_domain);
+CREATE INDEX IF NOT EXISTS idx_sales_sender_accounts_agent_status ON sales_sender_accounts(agent_id, status);
+CREATE INDEX IF NOT EXISTS idx_sales_outreach_messages_agent_status ON sales_outreach_messages(agent_id, status);
+CREATE INDEX IF NOT EXISTS idx_sales_outreach_messages_sender_sent_at ON sales_outreach_messages(sender_account_id, sent_at);
+CREATE INDEX IF NOT EXISTS idx_sales_outreach_messages_agentmail_message_id
+    ON sales_outreach_messages(agentmail_message_id)
+    WHERE agentmail_message_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_preview_tokens_token_hash ON sales_preview_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_sales_suppression_entries_email_hash ON sales_suppression_entries(normalized_email_hash);
+CREATE INDEX IF NOT EXISTS idx_sales_suppression_entries_domain ON sales_suppression_entries(domain);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_suppression_entries_unique_email_hash
+    ON sales_suppression_entries(normalized_email_hash)
+    WHERE normalized_email_hash IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_suppression_entries_unique_domain
+    ON sales_suppression_entries(domain)
+    WHERE domain IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_send_events_event_id ON sales_send_events(event_id);
+DROP INDEX IF EXISTS idx_sales_send_events_agentmail_message_id;
+CREATE INDEX IF NOT EXISTS idx_sales_send_events_agentmail_message_id
+    ON sales_send_events(agentmail_message_id)
+    WHERE agentmail_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_sales_send_events_type_created_at ON sales_send_events(event_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_sales_send_events_sender_type_created_at
+    ON sales_send_events(sender_account_id, event_type, created_at);
+
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS execution_stories_json JSONB;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS progress_notes_json JSONB;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS verification_json JSONB;

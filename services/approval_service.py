@@ -10,6 +10,7 @@ from models.control_plane import (
     ApprovalRequest,
     append_agent_run_artifact,
     create_approval_request,
+    get_approval_request_by_external_event_id,
     get_approval_request,
     list_pending_approvals,
     resolve_approval_request,
@@ -27,6 +28,14 @@ class ApprovalCreateRequest(BaseModel):
     requested_slack_channel_id: str | None = None
     requested_slack_thread_ts: str | None = None
     external_event_id: str | None = None
+
+
+class ExternalApprovalCreateRequest(BaseModel):
+    action_type: str
+    target_summary: str
+    requested_slack_channel_id: str | None = None
+    requested_slack_thread_ts: str | None = None
+    external_event_id: str
 
 
 class ApprovalResolutionRequest(BaseModel):
@@ -60,6 +69,35 @@ def create_approval(request: ApprovalCreateRequest) -> ApprovalRequest:
     if not approval:
         raise ValueError("Approval request could not be created.")
     return approval
+
+
+def create_external_approval(request: ExternalApprovalCreateRequest) -> ApprovalRequest:
+    existing = get_approval_request_by_external_event_id(request.external_event_id)
+    if existing:
+        return existing
+
+    slack_channel_id, slack_thread_ts = resolve_slack_route(
+        task_id=None,
+        explicit_channel_id=request.requested_slack_channel_id,
+        explicit_thread_ts=request.requested_slack_thread_ts,
+    )
+    approval = create_approval_request(
+        task_id=None,
+        agent_run_id=None,
+        action_type=request.action_type,
+        target_summary=request.target_summary,
+        requested_slack_channel_id=slack_channel_id,
+        requested_slack_thread_ts=slack_thread_ts,
+        external_event_id=request.external_event_id,
+    )
+    if not approval:
+        raise ValueError("Approval request could not be created.")
+    return approval
+
+
+def external_approval_is_approved(external_event_id: str) -> bool:
+    approval = get_approval_request_by_external_event_id(external_event_id)
+    return bool(approval and approval.status == "approved")
 
 
 def get_pending_approvals(limit: int = 50) -> list[ApprovalRequest]:

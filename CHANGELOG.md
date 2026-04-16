@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.3 - 2026-04-16
+
+### Added
+
+- Added the Tempa Sales Agent V0 control-plane flow for importing prospects, personalizing outreach, previewing messages, sending through AgentMail, and tracking replies.
+- Added a separate public sales API for preview, unsubscribe, and AgentMail webhook handling, plus hardened `systemd` service templates for the API and send worker.
+- Added sales-agent database tables, suppression records, sender health checks, dry-run/live-send controls, and tests across import, personalization, preview, webhook, worker, and deploy paths.
+
+### Changed
+
+- Changed approval requests so sales-agent live-send approvals can exist without being tied to a queued studio task.
+- Changed first-live sales approval to be exact-message scoped, so approval of an old or empty batch cannot unlock later live sends.
+- Updated production docs and environment examples with the Tempa sales-agent setup, safety switches, and deployment checklist.
+
+### Fixed
+
+- Fixed sales-send safety gaps before release: paused senders are re-checked inside the database claim, unsubscribe actions skip queued messages, live sends re-check suppression immediately before send, webhook payloads are size-limited while streaming, and live sends require explicit agent live mode plus a passed LLM evaluation.
+- Fixed deployment safety so the sales services run without write access to the app code and the worker fails closed when `SALES_AGENT_ID` is missing.
+
 ## 0.2.2 - 2026-04-14
 
 ### Added

@@ -1,0 +1,344 @@
+[
+  {
+    "name": "good founder launch angle",
+    "expected_pass": true,
+    "strategy": {
+      "company": "Acme",
+      "prospect": "Ada",
+      "evidence_urls": ["https://example.com/acme-launch"],
+      "observed_growth_context": "recent product launch",
+      "suggested_paid_social_angle": "founder-led demo clip",
+      "target_audience": "seed-stage founders",
+      "example_ad_concept": "30-second walkthrough",
+      "why_tempa_can_help": "quick creative testing",
+      "confidence_score": 0.91
+    },
+    "subject": "Paid social idea for Acme",
+    "body": "Hi Ada,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "good hiring signal angle",
+    "expected_pass": true,
+    "strategy": {
+      "company": "Northstar",
+      "prospect": "Bea",
+      "evidence_urls": ["https://example.com/jobs"],
+      "observed_growth_context": "new growth hire",
+      "suggested_paid_social_angle": "category education",
+      "target_audience": "ops leaders",
+      "example_ad_concept": "before-after workflow ad",
+      "why_tempa_can_help": "structured testing",
+      "confidence_score": 0.88
+    },
+    "subject": "Paid social idea for Northstar",
+    "body": "Hi Bea,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "good evidence backed numeric claim",
+    "expected_pass": true,
+    "strategy": {
+      "company": "Metricly",
+      "prospect": "Cam",
+      "evidence_urls": ["https://example.com/report"],
+      "observed_growth_context": "published 20% customer growth",
+      "suggested_paid_social_angle": "proof point creative",
+      "target_audience": "finance teams",
+      "example_ad_concept": "20% customer growth story",
+      "why_tempa_can_help": "turn proof into ads",
+      "confidence_score": 0.9
+    },
+    "subject": "Paid social idea for Metricly",
+    "body": "Hi Cam,\nI noticed the 20% customer growth note.\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "good category wedge",
+    "expected_pass": true,
+    "strategy": {
+      "company": "Ledgerly",
+      "prospect": "Dee",
+      "evidence_urls": ["https://example.com/category"],
+      "observed_growth_context": "new category page",
+      "suggested_paid_social_angle": "pain-led problem framing",
+      "target_audience": "controllers",
+      "example_ad_concept": "manual close checklist",
+      "why_tempa_can_help": "fast audience tests",
+      "confidence_score": 0.84
+    },
+    "subject": "Paid social idea for Ledgerly",
+    "body": "Hi Dee,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "good integration launch",
+    "expected_pass": true,
+    "strategy": {
+      "company": "Syncbase",
+      "prospect": "Eli",
+      "evidence_urls": ["https://example.com/integration"],
+      "observed_growth_context": "new integration announcement",
+      "suggested_paid_social_angle": "use-case specific integration ad",
+      "target_audience": "RevOps leaders",
+      "example_ad_concept": "integration setup clip",
+      "why_tempa_can_help": "ship creative tests quickly",
+      "confidence_score": 0.86
+    },
+    "subject": "Paid social idea for Syncbase",
+    "body": "Hi Eli,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "good founder quote angle",
+    "expected_pass": true,
+    "strategy": {
+      "company": "Brightloop",
+      "prospect": "Flo",
+      "evidence_urls": ["https://example.com/interview"],
+      "observed_growth_context": "founder interview about workflow pain",
+      "suggested_paid_social_angle": "quote-led story",
+      "target_audience": "customer success leaders",
+      "example_ad_concept": "quote plus product action",
+      "why_tempa_can_help": "package proof into ads",
+      "confidence_score": 0.92
+    },
+    "subject": "Paid social idea for Brightloop",
+    "body": "Hi Flo,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "good competitor wedge",
+    "expected_pass": true,
+    "strategy": {
+      "company": "Switchkit",
+      "prospect": "Gus",
+      "evidence_urls": ["https://example.com/compare"],
+      "observed_growth_context": "comparison page live",
+      "suggested_paid_social_angle": "switching-cost objection",
+      "target_audience": "IT buyers",
+      "example_ad_concept": "migration checklist",
+      "why_tempa_can_help": "test switcher language",
+      "confidence_score": 0.87
+    },
+    "subject": "Paid social idea for Switchkit",
+    "body": "Hi Gus,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "good vertical use case",
+    "expected_pass": true,
+    "strategy": {
+      "company": "Caregrid",
+      "prospect": "Hal",
+      "evidence_urls": ["https://example.com/healthcare"],
+      "observed_growth_context": "healthcare use-case page",
+      "suggested_paid_social_angle": "vertical pain point",
+      "target_audience": "clinic operators",
+      "example_ad_concept": "day-in-life operator ad",
+      "why_tempa_can_help": "test vertical audiences",
+      "confidence_score": 0.89
+    },
+    "subject": "Paid social idea for Caregrid",
+    "body": "Hi Hal,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "good pricing page signal",
+    "expected_pass": true,
+    "strategy": {
+      "company": "Billflow",
+      "prospect": "Ivy",
+      "evidence_urls": ["https://example.com/pricing"],
+      "observed_growth_context": "new pricing packaging",
+      "suggested_paid_social_angle": "cost clarity ad",
+      "target_audience": "finance operators",
+      "example_ad_concept": "pricing objection ad",
+      "why_tempa_can_help": "test pricing angles",
+      "confidence_score": 0.85
+    },
+    "subject": "Paid social idea for Billflow",
+    "body": "Hi Ivy,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "good webinar signal",
+    "expected_pass": true,
+    "strategy": {
+      "company": "Learnstack",
+      "prospect": "Jay",
+      "evidence_urls": ["https://example.com/webinar"],
+      "observed_growth_context": "upcoming webinar",
+      "suggested_paid_social_angle": "webinar-to-demo retargeting",
+      "target_audience": "enablement leaders",
+      "example_ad_concept": "webinar clip ad",
+      "why_tempa_can_help": "repurpose webinar demand",
+      "confidence_score": 0.9
+    },
+    "subject": "Paid social idea for Learnstack",
+    "body": "Hi Jay,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "bad generic praise",
+    "expected_pass": false,
+    "strategy": {
+      "company": "Acme",
+      "prospect": "Ada",
+      "evidence_urls": ["https://example.com"],
+      "observed_growth_context": "recent launch",
+      "suggested_paid_social_angle": "demo clip",
+      "target_audience": "founders",
+      "example_ad_concept": "walkthrough",
+      "why_tempa_can_help": "testing",
+      "confidence_score": 0.9
+    },
+    "subject": "Paid social idea for Acme",
+    "body": "Hi Ada,\nI loved your product.\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "bad missing evidence",
+    "expected_pass": false,
+    "strategy": {
+      "company": "Acme",
+      "prospect": "Ada",
+      "evidence_urls": [],
+      "observed_growth_context": "recent launch",
+      "suggested_paid_social_angle": "demo clip",
+      "target_audience": "founders",
+      "example_ad_concept": "walkthrough",
+      "why_tempa_can_help": "testing",
+      "confidence_score": 0.9
+    },
+    "subject": "Paid social idea for Acme",
+    "body": "Hi Ada,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "bad low confidence",
+    "expected_pass": false,
+    "strategy": {
+      "company": "Acme",
+      "prospect": "Ada",
+      "evidence_urls": ["https://example.com"],
+      "observed_growth_context": "recent launch",
+      "suggested_paid_social_angle": "demo clip",
+      "target_audience": "founders",
+      "example_ad_concept": "walkthrough",
+      "why_tempa_can_help": "testing",
+      "confidence_score": 0.4
+    },
+    "subject": "Paid social idea for Acme",
+    "body": "Hi Ada,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "bad misleading subject",
+    "expected_pass": false,
+    "strategy": {
+      "company": "Acme",
+      "prospect": "Ada",
+      "evidence_urls": ["https://example.com"],
+      "observed_growth_context": "recent launch",
+      "suggested_paid_social_angle": "demo clip",
+      "target_audience": "founders",
+      "example_ad_concept": "walkthrough",
+      "why_tempa_can_help": "testing",
+      "confidence_score": 0.9
+    },
+    "subject": "Re: following up",
+    "body": "Hi Ada,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "bad non https evidence",
+    "expected_pass": false,
+    "strategy": {
+      "company": "Acme",
+      "prospect": "Ada",
+      "evidence_urls": ["http://example.com"],
+      "observed_growth_context": "recent launch",
+      "suggested_paid_social_angle": "demo clip",
+      "target_audience": "founders",
+      "example_ad_concept": "walkthrough",
+      "why_tempa_can_help": "testing",
+      "confidence_score": 0.9
+    },
+    "subject": "Paid social idea for Acme",
+    "body": "Hi Ada,\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "invented percent claim",
+    "expected_pass": false,
+    "strategy": {
+      "company": "Acme",
+      "prospect": "Ada",
+      "evidence_urls": ["https://example.com"],
+      "observed_growth_context": "recent launch",
+      "suggested_paid_social_angle": "demo clip",
+      "target_audience": "founders",
+      "example_ad_concept": "walkthrough",
+      "why_tempa_can_help": "testing",
+      "confidence_score": 0.9
+    },
+    "subject": "Paid social idea for Acme",
+    "body": "Hi Ada,\nI noticed 40% growth.\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "invented user claim",
+    "expected_pass": false,
+    "strategy": {
+      "company": "Acme",
+      "prospect": "Ada",
+      "evidence_urls": ["https://example.com"],
+      "observed_growth_context": "recent launch",
+      "suggested_paid_social_angle": "demo clip",
+      "target_audience": "founders",
+      "example_ad_concept": "walkthrough",
+      "why_tempa_can_help": "testing",
+      "confidence_score": 0.9
+    },
+    "subject": "Paid social idea for Acme",
+    "body": "Hi Ada,\nI noticed 50000 users.\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "invented 10x claim",
+    "expected_pass": false,
+    "strategy": {
+      "company": "Acme",
+      "prospect": "Ada",
+      "evidence_urls": ["https://example.com"],
+      "observed_growth_context": "recent launch",
+      "suggested_paid_social_angle": "demo clip",
+      "target_audience": "founders",
+      "example_ad_concept": "walkthrough",
+      "why_tempa_can_help": "testing",
+      "confidence_score": 0.9
+    },
+    "subject": "Paid social idea for Acme",
+    "body": "Hi Ada,\nThis could create 10x growth.\nUnsubscribe: https://example.com/u"
+  },
+  {
+    "name": "edge missing postal address",
+    "expected_pass": false,
+    "strategy": {
+      "company": "Acme",
+      "prospect": "Ada",
+      "evidence_urls": ["https://example.com"],
+      "observed_growth_context": "recent launch",
+      "suggested_paid_social_angle": "demo clip",
+      "target_audience": "founders",
+      "example_ad_concept": "walkthrough",
+      "why_tempa_can_help": "testing",
+      "confidence_score": 0.9
+    },
+    "subject": "Paid social idea for Acme",
+    "body": "Hi Ada,\nUnsubscribe: https://example.com/u",
+    "postal_address": ""
+  },
+  {
+    "name": "edge non https unsubscribe",
+    "expected_pass": false,
+    "strategy": {
+      "company": "Acme",
+      "prospect": "Ada",
+      "evidence_urls": ["https://example.com"],
+      "observed_growth_context": "recent launch",
+      "suggested_paid_social_angle": "demo clip",
+      "target_audience": "founders",
+      "example_ad_concept": "walkthrough",
+      "why_tempa_can_help": "testing",
+      "confidence_score": 0.9
+    },
+    "subject": "Paid social idea for Acme",
+    "body": "Hi Ada,\nUnsubscribe: http://example.com/u",
+    "unsubscribe_link": "http://example.com/u"
+  }
+]

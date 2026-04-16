@@ -99,6 +99,12 @@ Useful reusable-workflow endpoints:
 - `POST /v1/workflows/{slug}/tasks` creates a new queued task from a saved recipe.
 - `POST /v1/memory` saves a prompt, plan, or decision entry.
 - `GET /v1/memory` lists saved memory entries.
+- `POST /v1/sales/agents` creates a sales agent record.
+- `POST /v1/sales/agents/{agent_id}/import` imports prospects for review and outreach.
+- `POST /v1/sales/agents/{agent_id}/personalize` drafts outreach messages.
+- `GET /v1/sales/agents/{agent_id}/dry-run-summary` previews dry-run send output.
+- `POST /v1/sales/agents/{agent_id}/send-mode` changes an agent between dry-run and live mode.
+- `POST /v1/sales/agents/{agent_id}/send` runs one sales-send worker pass.
 
 Example: save a reusable workflow recipe
 
@@ -179,6 +185,33 @@ For the full production checklist, restart commands, smoke tests, and common rec
 
 - [docs/production-runbook.md](docs/production-runbook.md)
 - [docs/paperclip-integration-spec.md](docs/paperclip-integration-spec.md) for the boundary between this control plane and the Paperclip UI
+
+## Run The Tempa Sales Agent
+
+The Tempa sales agent is a guarded outreach pipeline. It can import prospects, draft personalized messages, dry-run sends, then send live only after exact-message approval and safety checks.
+
+Start the public preview, unsubscribe, and webhook API locally:
+
+```bash
+.venv/bin/python3 scripts/run_sales_public_api.py
+```
+
+Run one sales-send worker pass locally:
+
+```bash
+.venv/bin/python3 scripts/run_sales_worker.py <agent_id>
+```
+
+Important safety settings:
+
+- `SALES_AGENT_ENABLED=true` must be set before any send worker can run.
+- `SALES_SEND_MODE=live` and the agent's stored send mode must both be live before real email sends can happen.
+- `SALES_KILL_SWITCH=true` stops sending immediately.
+- A message must pass the deterministic checks, the LLM evaluation, and exact Slack approval before live send.
+
+Use the full setup and recovery guide before production use:
+
+- [docs/tempa-sales-agent-runbook.md](docs/tempa-sales-agent-runbook.md)
 
 ## Run The Worker
 

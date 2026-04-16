@@ -30,6 +30,22 @@ class SetupDbSchemaTests(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS memory_entries", SCHEMA_SQL)
         self.assertIn("source_key      TEXT UNIQUE", SCHEMA_SQL)
 
+    def test_schema_creates_sales_agent_tables_and_indexes(self) -> None:
+        self.assertIn("CREATE TABLE IF NOT EXISTS sales_agents", SCHEMA_SQL)
+        self.assertIn("CREATE TABLE IF NOT EXISTS sales_sender_accounts", SCHEMA_SQL)
+        self.assertIn("CREATE TABLE IF NOT EXISTS sales_prospects", SCHEMA_SQL)
+        self.assertIn("CREATE TABLE IF NOT EXISTS sales_preview_tokens", SCHEMA_SQL)
+        self.assertIn("CREATE TABLE IF NOT EXISTS sales_suppression_entries", SCHEMA_SQL)
+        self.assertIn("CREATE TABLE IF NOT EXISTS sales_send_events", SCHEMA_SQL)
+        self.assertIn("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_prospects_normalized_email_hash", SCHEMA_SQL)
+        self.assertIn("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_preview_tokens_token_hash", SCHEMA_SQL)
+        self.assertIn("CREATE INDEX IF NOT EXISTS idx_sales_send_events_type_created_at", SCHEMA_SQL)
+        self.assertIn("DROP INDEX IF EXISTS idx_sales_send_events_agentmail_message_id;", SCHEMA_SQL)
+        self.assertIn("CREATE INDEX IF NOT EXISTS idx_sales_send_events_agentmail_message_id", SCHEMA_SQL)
+        self.assertNotIn("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_send_events_agentmail_message_id", SCHEMA_SQL)
+        self.assertIn("CREATE INDEX IF NOT EXISTS idx_sales_outreach_messages_agentmail_message_id", SCHEMA_SQL)
+        self.assertIn("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_suppression_entries_unique_email_hash", SCHEMA_SQL)
+
 
 if __name__ == "__main__":
     unittest.main()

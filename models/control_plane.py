@@ -81,7 +81,7 @@ class AttentionItem(BaseModel):
 
 class ApprovalRequest(BaseModel):
     id: int | None = None
-    task_id: int
+    task_id: int | None = None
     agent_run_id: int | None = None
     action_type: str
     target_summary: str
@@ -609,7 +609,7 @@ def mark_attention_item_posted(attention_item_id: int, *, slack_message_ts: str 
 
 def create_approval_request(
     *,
-    task_id: int,
+    task_id: int | None,
     agent_run_id: int | None,
     action_type: str,
     target_summary: str,
@@ -654,7 +654,7 @@ def create_approval_request(
                 )
                 row = cur.fetchone()
 
-            if row and row["status"] == "pending":
+            if row and row["status"] == "pending" and task_id is not None:
                 cur.execute(
                     "UPDATE tasks SET approval_state = 'pending', status = 'awaiting_approval' WHERE id = %s",
                     (task_id,),
@@ -670,6 +670,16 @@ def get_approval_request(approval_id: int) -> ApprovalRequest | None:
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT * FROM approval_requests WHERE id = %s", (approval_id,))
+            return _row_to_model(cur.fetchone(), ApprovalRequest)
+    finally:
+        conn.close()
+
+
+def get_approval_request_by_external_event_id(external_event_id: str) -> ApprovalRequest | None:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM approval_requests WHERE external_event_id = %s", (external_event_id,))
             return _row_to_model(cur.fetchone(), ApprovalRequest)
     finally:
         conn.close()
@@ -765,20 +775,21 @@ def resolve_approval_request(
                 return _row_to_model(row, ApprovalRequest) if row else None
 
             task_id = row["task_id"]
-            task_status = "queued" if status == "approved" else "blocked"
-            cur.execute(
-                """
-                UPDATE tasks
-                SET approval_state = %s,
-                    status = %s,
-                    worker_id = NULL,
-                    lease_token = NULL,
-                    lease_expires_at = NULL,
-                    last_heartbeat_at = NULL
-                WHERE id = %s
-                """,
-                (status, task_status, task_id),
-            )
+            if task_id is not None:
+                task_status = "queued" if status == "approved" else "blocked"
+                cur.execute(
+                    """
+                    UPDATE tasks
+                    SET approval_state = %s,
+                        status = %s,
+                        worker_id = NULL,
+                        lease_token = NULL,
+                        lease_expires_at = NULL,
+                        last_heartbeat_at = NULL
+                    WHERE id = %s
+                    """,
+                    (status, task_status, task_id),
+                )
             conn.commit()
             return _row_to_model(row, ApprovalRequest)
     finally:

@@ -4,12 +4,19 @@ This is the practical runbook for the live Virtual Org control stack on the remo
 
 ## What should be running
 
-Two Linux background services should stay up at all times:
+Two Linux background services should stay up at all times for the core control plane:
 
 - `virtual-org-control-api`
 - `virtual-org-slack-dispatcher`
 
 OpenClaw should also be running through its own user service.
+
+The Tempa Sales Agent adds two more services when it is deployed:
+
+- `virtual-org-sales-public-api`
+- `virtual-org-sales-worker`
+
+Use `docs/tempa-sales-agent-runbook.md` for the sales-specific launch checklist, kill switch, and smoke tests.
 
 ## Quick health check
 
@@ -18,8 +25,11 @@ Run these on the server:
 ```bash
 systemctl status virtual-org-control-api
 systemctl status virtual-org-slack-dispatcher
+systemctl status virtual-org-sales-public-api
+systemctl status virtual-org-sales-worker
 systemctl --user status openclaw-gateway
 curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8091/health
 ```
 
 Healthy looks like:
@@ -46,6 +56,18 @@ Slack dispatcher:
 systemctl restart virtual-org-slack-dispatcher
 ```
 
+Sales public API:
+
+```bash
+systemctl restart virtual-org-sales-public-api
+```
+
+Sales worker:
+
+```bash
+systemctl restart virtual-org-sales-worker
+```
+
 OpenClaw gateway:
 
 ```bash
@@ -66,6 +88,18 @@ Slack dispatcher:
 
 ```bash
 journalctl -u virtual-org-slack-dispatcher -f
+```
+
+Sales public API:
+
+```bash
+journalctl -u virtual-org-sales-public-api -f
+```
+
+Sales worker:
+
+```bash
+journalctl -u virtual-org-sales-worker -f
 ```
 
 OpenClaw gateway:
