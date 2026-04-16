@@ -30,6 +30,7 @@ class TempaPersonalizationClient:
                 "prospect_title": prospect.title,
                 "source_context": prospect.source_context_json,
             },
+            headers=self._auth_headers(),
             timeout=self.timeout_seconds,
         )
         response.raise_for_status()
@@ -49,6 +50,12 @@ class TempaPersonalizationClient:
         }
         if allowed_hosts and parsed.hostname.lower() not in allowed_hosts:
             raise RuntimeError("TEMPA_SALES_STRATEGY_URL host is not allowed.")
+
+    def _auth_headers(self) -> dict[str, str] | None:
+        token = os.getenv("TEMPA_SALES_STRATEGY_TOKEN", "").strip()
+        if not token:
+            return None
+        return {"X-Internal-Token": token}
 
 
 def build_sales_email(

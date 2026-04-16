@@ -35,6 +35,37 @@ class TempaPersonalizationClientTests(unittest.TestCase):
 
         post.assert_not_called()
 
+    @patch("services.sales_personalization.httpx.post")
+    def test_strategy_request_sends_internal_token_when_configured(self, post) -> None:
+        post.return_value.json.return_value = {"company": "Acme"}
+        post.return_value.raise_for_status.return_value = None
+        client = TempaPersonalizationClient(url="https://tempa.example/api/internal/sales-strategy")
+
+        with patch.dict(
+            os.environ,
+            {
+                "TEMPA_SALES_STRATEGY_ALLOWED_HOSTS": "tempa.example",
+                "TEMPA_SALES_STRATEGY_TOKEN": "secret-token",
+            },
+            clear=False,
+        ):
+            result = client.create_strategy(self._prospect())
+
+        self.assertEqual(result["company"], "Acme")
+        self.assertEqual(post.call_args.kwargs["headers"], {"X-Internal-Token": "secret-token"})
+
+    @patch("services.sales_personalization.httpx.post")
+    def test_strategy_request_omits_auth_header_without_token(self, post) -> None:
+        post.return_value.json.return_value = {"company": "Acme"}
+        post.return_value.raise_for_status.return_value = None
+        client = TempaPersonalizationClient(url="https://tempa.example/api/internal/sales-strategy")
+
+        with patch.dict(os.environ, {"TEMPA_SALES_STRATEGY_ALLOWED_HOSTS": "tempa.example"}, clear=False):
+            result = client.create_strategy(self._prospect())
+
+        self.assertEqual(result["company"], "Acme")
+        self.assertIsNone(post.call_args.kwargs["headers"])
+
 
 if __name__ == "__main__":
     unittest.main()
