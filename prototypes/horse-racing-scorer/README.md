@@ -82,20 +82,51 @@ as a scheduled job or a small CLI script that writes directly to the DB.
 
 ## Deploying
 
-Two paths:
+### Railway (recommended for this prototype)
 
-1. **Vercel + a hosted DB** (recommended for production):
-   swap `lib/db.ts` to use a Postgres adapter (e.g. `@neondatabase/serverless`)
-   and translate the schema in `initSchema()`. The query layer in
-   `lib/queries.ts` is small and easy to port.
+Railway runs the whole thing as a single container with a persistent volume for
+the SQLite file. ~£4/mo, no code changes from local dev.
 
-2. **A single VPS or Fly Volume**: `next build && next start` with the SQLite
-   file on persistent disk. Fine for 150 entrants.
+1. Sign in at [railway.app](https://railway.app) (GitHub auth is fine).
+2. **New Project → Deploy from GitHub repo → `maxshepcross/virtual-org`.**
+3. In the service that gets created, open **Settings**:
+   - **Root Directory:** `prototypes/horse-racing-scorer`
+   - **Build Command:** leave blank (auto-detected)
+   - **Start Command:** leave blank (auto-detected: `npm run start`)
+4. Open **Variables** and add:
+   - `ADMIN_PASSWORD` = something only you know
+   - `DB_PATH` = `/app/data/comp.db`
+   - `NODE_ENV` = `production`
+5. Open **Volumes** → **New Volume**, mount it at `/app/data` (1 GB is plenty).
+6. Deploy. On first request the DB schema bootstraps itself and the 20 starter
+   horses auto-seed.
+7. Open **Settings → Networking → Generate Domain** to get a public URL like
+   `horse-comp-production.up.railway.app`. Share that.
+8. Visit `/admin/login`, sign in with `ADMIN_PASSWORD`, paste the real horse
+   list under **Admin → Horses** when you have it.
+
+> The volume mount is the only non-obvious bit: without it, the SQLite file
+> lives on ephemeral container disk and resets on every deploy. With the volume
+> at `/app/data` and `DB_PATH=/app/data/comp.db`, the DB persists across deploys
+> and restarts.
+
+### Alternatives
+
+- **Vercel + hosted Postgres**: swap `lib/db.ts` to use a Postgres adapter
+  (e.g. `@neondatabase/serverless`) and translate the schema in `initSchema()`.
+  The query layer in `lib/queries.ts` is small and easy to port. Worth it if
+  you outgrow ~10k entries; not needed for a 150-person friends comp.
+- **Fly.io**: same shape as Railway — single container + volume. CLI-heavier
+  but free tier is generous.
+- **Any VPS**: `next build && next start` with the SQLite file on persistent
+  disk.
 
 Either way, set:
 
 - `ADMIN_PASSWORD` — required, gates `/admin/*`
-- `DB_PATH` — optional, defaults to `./data/comp.db`
+- `DB_PATH` — path to the SQLite file (use the volume mount path)
+- `SKIP_AUTOSEED=1` — optional, disables the 20-horse autoseed if you want a
+  fully blank pool
 
 ## Limitations / known follow-ups
 
