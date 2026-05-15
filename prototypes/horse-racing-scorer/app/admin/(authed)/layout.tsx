@@ -32,6 +32,7 @@ export default async function AdminLayout({
         <Link href="/admin/horses" className="hover:underline">Horses</Link>
         <Link href="/admin/races" className="hover:underline">Races &amp; results</Link>
         <Link href="/admin/entrants" className="hover:underline">Entrants</Link>
+        <Link href="/admin/sync" className="hover:underline">Sync</Link>
         <form action={signOutAction} className="ml-auto">
           <button type="submit" className="text-stone-500 hover:underline">
             Sign out

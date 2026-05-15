@@ -20,6 +20,7 @@ db.pragma("foreign_keys = ON");
 
 if (!globalForDb.__db) {
   initSchema(db);
+  migrate(db);
   autoSeedIfEmpty(db);
   globalForDb.__db = db;
 }
@@ -48,12 +49,14 @@ function initSchema(d: Database.Database) {
     );
 
     CREATE TABLE IF NOT EXISTS race (
-      id            TEXT PRIMARY KEY,
-      name          TEXT NOT NULL,
-      meeting       TEXT,
-      date          TEXT NOT NULL,
-      completed_at  TEXT,
-      created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      id              TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      meeting         TEXT,
+      date            TEXT NOT NULL,
+      completed_at    TEXT,
+      external_source TEXT,
+      external_id     TEXT,
+      created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS result (
@@ -70,6 +73,61 @@ function initSchema(d: Database.Database) {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS sync_run (
+      id               TEXT PRIMARY KEY,
+      source           TEXT NOT NULL,
+      requested_date   TEXT NOT NULL,
+      triggered_by     TEXT NOT NULL,
+      started_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finished_at      TEXT,
+      status           TEXT NOT NULL,
+      races_seen       INTEGER NOT NULL DEFAULT 0,
+      results_applied  INTEGER NOT NULL DEFAULT 0,
+      unmatched_count  INTEGER NOT NULL DEFAULT 0,
+      error            TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS sync_run_started_at
+      ON sync_run (started_at DESC);
+
+    CREATE TABLE IF NOT EXISTS sync_unmatched (
+      id              TEXT PRIMARY KEY,
+      sync_run_id     TEXT NOT NULL REFERENCES sync_run(id) ON DELETE CASCADE,
+      race_external_id TEXT,
+      race_name       TEXT NOT NULL,
+      meeting         TEXT,
+      race_date       TEXT NOT NULL,
+      position        INTEGER NOT NULL CHECK (position BETWEEN 1 AND 3),
+      api_horse_name  TEXT NOT NULL,
+      api_horse_id    TEXT,
+      suggestion_horse_id TEXT REFERENCES horse(id) ON DELETE SET NULL,
+      suggestion_score    REAL,
+      resolved_at     TEXT,
+      resolved_horse_id TEXT REFERENCES horse(id) ON DELETE SET NULL,
+      ignored_at      TEXT,
+      created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS sync_unmatched_pending
+      ON sync_unmatched (resolved_at, ignored_at);
+  `);
+}
+
+function migrate(d: Database.Database) {
+  // Backfill columns on the race table for DBs created before the sync feature.
+  const cols = d.prepare(`PRAGMA table_info(race)`).all() as Array<{ name: string }>;
+  const has = (name: string) => cols.some((c) => c.name === name);
+  if (!has("external_source")) {
+    d.exec(`ALTER TABLE race ADD COLUMN external_source TEXT`);
+  }
+  if (!has("external_id")) {
+    d.exec(`ALTER TABLE race ADD COLUMN external_id TEXT`);
+  }
+  d.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS race_external_uniq
+      ON race (external_source, external_id)
+      WHERE external_source IS NOT NULL AND external_id IS NOT NULL;
   `);
 }
 
