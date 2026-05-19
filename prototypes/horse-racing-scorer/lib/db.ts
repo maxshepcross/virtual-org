@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
+import { STARTER_HORSES } from "./starter-horses";
 
 const DB_PATH = process.env.DB_PATH
   ? path.resolve(process.env.DB_PATH)
@@ -13,11 +14,13 @@ const globalForDb = globalThis as unknown as { __db?: Database.Database };
 export const db: Database.Database =
   globalForDb.__db ?? new Database(DB_PATH);
 
+db.pragma("busy_timeout = 5000");
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
 if (!globalForDb.__db) {
   initSchema(db);
+  autoSeedIfEmpty(db);
   globalForDb.__db = db;
 }
 
@@ -68,6 +71,21 @@ function initSchema(d: Database.Database) {
       value TEXT NOT NULL
     );
   `);
+}
+
+function autoSeedIfEmpty(d: Database.Database) {
+  if (process.env.SKIP_AUTOSEED === "1") return;
+  const { c } = d.prepare(`SELECT COUNT(*) AS c FROM horse`).get() as { c: number };
+  if (c > 0) return;
+  const insert = d.prepare(
+    `INSERT OR IGNORE INTO horse (id, name, slug) VALUES (?, ?, ?)`,
+  );
+  const tx = d.transaction(() => {
+    for (const name of STARTER_HORSES) {
+      insert.run(genId(), name, slugify(name));
+    }
+  });
+  tx();
 }
 
 export function genId(): string {
