@@ -45,6 +45,8 @@ Fastest path to value:
 - Product feature work by default
 - Legacy intake flows
 - Legacy content pipeline logic
+- The 15 To Follow horse-racing app now lives in its own repo:
+  https://github.com/maxshepcross/15-to-follow
 
 Those old systems were removed on purpose so future agents do not confuse this workspace with an old prototype.
 
