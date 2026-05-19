@@ -67,18 +67,51 @@ Defined in `lib/scoring.ts`:
 
 Edit those numbers and restart.
 
-## Auto-pulling results (future)
+## Auto-pulling results
 
-Results today are entered manually under **Admin → Races**. The schema is
-already shaped for an automated feed:
+Hooked up to [The Racing API](https://www.theracingapi.com/) (free plan,
+covers UK + IRE results — what we need). Sync flow:
 
-- `race` rows define which races count.
-- `result` rows record the top 3 horses per race.
+1. `npm run sync` (or the nightly cron) calls `GET /v1/results` for a date.
+2. For each race's 1st/2nd/3rd, we fuzzy-match the horse name against the
+   pool. Exact matches and high-confidence (~90%+) fuzzy matches apply
+   immediately. Anything weaker goes to **Admin → Sync** as an "unmatched"
+   row with a best-guess suggestion.
+3. Idempotent: re-running the same date won't double-count (races are deduped
+   by `external_id`, results by `(race_id, position)`).
 
-A scraper or feed adapter just needs to upsert `race` + `result` rows and call
-`revalidatePath('/leaderboard')`. Sources to consider: Racing Post,
-At The Races, Sporting Life, BHA. Keep this out of the public web app — run it
-as a scheduled job or a small CLI script that writes directly to the DB.
+### One-off / debugging
+
+```bash
+# Pull yesterday's results
+npm run sync
+
+# Pull a specific date
+npm run sync -- --date 2026-05-14
+
+# Dry-run: hit the API and match, but don't write anything
+npm run sync -- --date 2026-05-14 --dry-run
+```
+
+Env vars required:
+
+- `RACING_API_USERNAME` — from your dashboard at theracingapi.com
+- `RACING_API_PASSWORD` — same
+
+### Scheduling on Railway
+
+Create a **second Railway service** in the same project pointing at the same
+repo (root directory `prototypes/horse-racing-scorer`) with:
+
+- **Start command:** `npm run sync -- --yesterday`
+- **Cron schedule:** `15 6 * * *` (06:15 UTC — after results have settled overnight)
+- **Variables:** same `RACING_API_USERNAME` / `RACING_API_PASSWORD`,
+  same `DB_PATH=/app/data/comp.db`
+- **Volume:** mount the **same** volume at `/app/data` (so the cron job writes
+  to the same SQLite file the web service reads). In Railway: Volumes → Use
+  Existing Volume → pick the web service's volume.
+
+Then check `/admin/sync` each morning to clear any unmatched horses.
 
 ## Deploying
 
@@ -125,6 +158,7 @@ Either way, set:
 
 - `ADMIN_PASSWORD` — required, gates `/admin/*`
 - `DB_PATH` — path to the SQLite file (use the volume mount path)
+- `RACING_API_USERNAME` / `RACING_API_PASSWORD` — required for the results sync
 - `SKIP_AUTOSEED=1` — optional, disables the 20-horse autoseed if you want a
   fully blank pool
 
